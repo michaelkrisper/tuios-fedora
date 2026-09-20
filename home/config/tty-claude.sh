@@ -1,7 +1,12 @@
 # tty1: Wayland-Sitzung (sway + foot) starten und darin Claude Code.
-# Zurueck zum cage-Kiosk:  touch ~/.no-sway
-# Nur nackte Textkonsole:  touch ~/.no-sway ~/.no-cage
+# Nur nackte Textkonsole:  touch ~/.no-sway
 # Gar kein Autostart:      touch ~/.no-autoclaude
+#
+# 2026-09-20: Die 3-Sekunden-Wartezeit mit Ctrl-C-Ausstieg ist entfallen --
+# NAutoVTs=6, Alt+F2 gibt jederzeit eine Login-Konsole. Der Hinweis auf "kde"
+# war seit der Plasma-Deinstallation falsch. Auch der cage-Fallback ist weg
+# (Paket deinstalliert); ohne sway landet man direkt in claude auf der
+# Textkonsole. Helligkeit: `bl 30`.
 
 if [ -e "$HOME/.no-autoclaude" ]; then
     :
@@ -19,18 +24,13 @@ elif [ "$(tty)" = "/dev/tty1" ] && [ -z "$WAYLAND_DISPLAY$DISPLAY" ] && [ -z "$A
         export XKB_DEFAULT_LAYOUT XKB_DEFAULT_MODEL XKB_DEFAULT_VARIANT XKB_DEFAULT_OPTIONS
     fi
 
-    printf 'Start in 3s  (Ctrl-C = nur Shell, "kde" = Plasma, "bl 30" = Helligkeit)\n'
-    if sleep 3; then
-        if command -v sway >/dev/null && [ ! -e "$HOME/.no-sway" ]; then
-            AUTOCLAUDE_STAGE=done sway   # Stufe 2 setzt der sway-config-exec
-        elif command -v cage >/dev/null && [ ! -e "$HOME/.no-cage" ]; then
-            AUTOCLAUDE_STAGE=kiosk cage -s -- foot
-        else
-            AUTOCLAUDE_STAGE=done; export AUTOCLAUDE_STAGE
-            cd "$HOME" && claude
-        fi
-        export AUTOCLAUDE_STAGE=done
+    if command -v sway >/dev/null && [ ! -e "$HOME/.no-sway" ]; then
+        AUTOCLAUDE_STAGE=done sway   # Stufe 2 setzt der sway-config-exec
+    else
+        AUTOCLAUDE_STAGE=done; export AUTOCLAUDE_STAGE
+        cd "$HOME" && claude
     fi
+    export AUTOCLAUDE_STAGE=done
 elif [ "$AUTOCLAUDE_STAGE" = "kiosk" ]; then
     # Stufe 2 - in foot unter sway/cage
     export AUTOCLAUDE_STAGE=done

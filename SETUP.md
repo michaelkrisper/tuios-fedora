@@ -37,10 +37,10 @@ ln -sf ~/tuios-fedora/src/specialkeysd.c         ~/.local/src/specialkeysd.c
 
 ```sh
 sudo dnf install -y \
-  sway swaybg foot cage fuzzel tmux \
+  sway swaybg foot fuzzel tmux \
   cascadia-mono-nf-fonts terminus-fonts-console \
   brightnessctl wl-clipboard grim slurp kbd \
-  powertop tuned thermald pciutils zram-generator grubby \
+  tlp powertop thermald pciutils zram-generator grubby \
   NetworkManager-wifi \
   git gh ripgrep fd-find bat eza fzf jq htop git-delta
 ```
@@ -49,11 +49,17 @@ Wifi needs the out-of-tree Broadcom driver — the BCM4360 has no in-kernel
 support: `akmod-wl` + `broadcom-wl` from RPM Fusion. This is the one piece that
 makes resume slow (~8.4 s) and cannot be fixed from here.
 
-`cage` is kept only as a fallback path in the starter script; sway is what
-actually runs. `mbpfan` (fan control) is built from source, there is no RPM.
+`mbpfan` (fan control) is built from source, there is no RPM.
 
-Not installed on purpose: `tlp` (power management is handled by the units
-below), `pipewire`/`wireplumber` are installed but masked, see step 6.
+`tlp` replaced the hand-written power units on 2026-09-20; its config lives in
+`/etc/tlp.d/01-mbp.conf` (see step 7). `tlp.service` is `Type=oneshot` and
+udev-triggered, so nothing sits resident. **Mask `tlp-pd.service`** — the
+package ships a PowerProfiles D-Bus daemon (35 MB of Python) that `disable`
+alone does not stop, because D-Bus activates it again.
+
+`pipewire`/`wireplumber` are installed but masked, see step 6. `cage` was
+removed on 2026-09-20; sway had been the only thing actually running for
+months.
 
 ---
 
@@ -77,8 +83,8 @@ tty1 login -> ~/.bash_profile -> ~/.config/tty-claude.sh
 ```
 
 `AUTOCLAUDE_STAGE` is what keeps the script from recursing into itself when it
-is sourced a second and third time. `touch ~/.no-sway` falls back to
-`cage -s -- foot`, which is why cage is still installed. Copy both files:
+is sourced a second and third time. `touch ~/.no-sway` drops you straight
+into claude on the text console. Copy both files:
 
 ```sh
 cp home/config/tty-claude.sh ~/.config/tty-claude.sh
@@ -93,10 +99,11 @@ Two things this depends on and that are easy to get wrong:
   restart loop makes the machine unusable over ssh-less serial.
 
 Escape hatches, created with `touch`, deliberately not in this repo:
-`~/.no-sway`, `~/.no-cage`, `~/.no-tmux`, `~/.no-autoclaude`.
+`~/.no-sway`, `~/.no-tmux`, `~/.no-autoclaude`.
 
-`bin/bootmode` switches the default target between tty and KDE, for when a
-desktop is genuinely needed.
+`bin/bootmode` used to switch the default target between tty and KDE. Plasma
+was uninstalled on 2026-09-20, so the `kde` branch now only prints a hint;
+`graphical.target` has no display manager left.
 
 ---
 
@@ -195,17 +202,14 @@ sudo cp system/etc/systemd/system/*.service system/etc/systemd/system/*.timer \
      /etc/systemd/system/
 sudo cp system/etc/mbpfan.conf /etc/mbpfan.conf
 sudo systemctl daemon-reload
-sudo systemctl enable --now cpu-power powertop-autotune mbpfan \
-     pci-remove-unused wlan-powersave auto-update.timer
+sudo systemctl enable --now tlp mbpfan auto-update.timer
+sudo systemctl mask tlp-pd
 ```
 
 | unit | what it does |
 |---|---|
-| `cpu-power` | powersave governor, `energy_perf_bias=15`, turbo left on |
-| `powertop-autotune` | `powertop --auto-tune` once at boot |
+| `tlp` | governor, `energy_perf_bias=15`, turbo, SATA/PCIe/USB power policy, wifi `power_save` — everything the four hand-written units used to do |
 | `mbpfan` | fan curve; the Apple SMC needs one, nothing else provides it |
-| `pci-remove-unused` | drops camera, both audio devices and one bridge off the PCI bus |
-| `wlan-powersave` | sets `power_save` on the wifi interface |
 | `auto-update.timer` | daily dnf/flatpak/npm update **[fedora]** |
 | `specialkeysd` | the key daemon from step 5 |
 
@@ -257,12 +261,13 @@ systemctl --user mask pipewire pipewire.socket pipewire-pulse \
 * **Resume takes ~8.4 s**, almost all of it in the `wl` wifi driver. Not
   fixable without replacing the card.
 * **Suspend takes ~9.6 s** in the firmware's `_PTS` method, which polls the
-  camera's power state up to 5000 times. `30-camera-d3` was written to set the
-  camera to D3 before suspend and short-circuit that loop — but
-  `pci-remove-unused` removes the camera from the bus at boot, so the hook
-  finds no device and exits. The two mitigations cancel each other out; the D3
-  idea has therefore never actually been tested. Taking `0000:02:00.0` out of
-  `pci-remove-unused.sh` would be the experiment.
+  camera's power state up to 5000 times. `30-camera-d3` (write the camera to
+  D3 first) and `pci-remove-unused` (drop it off the bus) cancelled each other
+  out, so the idea was never actually tested. Both were deleted on 2026-09-20
+  at the owner's request, together with `40-smt-defer` (which had been saving
+  ~2.3 s per resume) and `50-resume-cpu-boost`. The `_PTS` brake is therefore
+  accepted, not solved. The scripts are still in this repo's history if anyone
+  wants to revisit it.
 * A DSDT override was considered for the same problem and rejected as too
   risky for the gain.
 
