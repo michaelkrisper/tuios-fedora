@@ -214,7 +214,8 @@ static void render(long cpu, long rxr, long txr) {
         long avg = smooth_power(pw, dis);
 
         padnum(cap, 3);
-        put(dis && cap <= 15 ? "#[fg=#f38ba8]" : dis && cap <= 30 ? "#[fg=#fab387]" : "#[fg=#a6e3a1]");
+        int crit = dis && cap < 15;             // roter Hintergrund bis Zeilenende
+        put(crit ? "#[fg=#1e1e2e,bg=#f38ba8]" : dis && cap <= 30 ? "#[fg=#fab387]" : "#[fg=#a6e3a1]");
         put(dis ? "󰁹" : "󰂄");
         putnum(cap, 0); put("%");
         // Restzeit auf 5 min gerundet, damit die Anzeige nicht bei jedem
@@ -233,7 +234,7 @@ static void render(long cpu, long rxr, long txr) {
         } else {
             pad(4);
         }
-        put("#[fg=#cdd6f4] ");
+        put("#[fg=#cdd6f4,bg=default] ");
     }
 }
 
