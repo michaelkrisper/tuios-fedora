@@ -174,6 +174,7 @@ regenerated from them:
 rhgb quiet mem_sleep_default=deep pcie_aspm.policy=powersave
 i915.enable_psr=2 i915.enable_fbc=1 thunderbolt.hosts_only=1
 acpi_osi=!Darwin intel_pstate=active
+resume=UUID=<root-uuid> resume_offset=<see below>
 ```
 
 `acpi_osi=!Darwin` stops the firmware pretending to be macOS; without it the
@@ -222,6 +223,30 @@ just as silently.
 ```sh
 sudo cp system/usr/lib/systemd/system-sleep/* /usr/lib/systemd/system-sleep/
 sudo chmod +x /usr/lib/systemd/system-sleep/*
+```
+
+Closing the lid hibernates instead of suspending. zram cannot hold a
+hibernation image, so an 8 GiB swapfile sits in its own btrfs subvolume at
+priority 0 (zram keeps priority 100 for normal swapping). The swapfile needs
+the SELinux type `swapfile_t` or logind reports that hibernation is unavailable
+**[fedora]**. `resume_offset` depends on where the file lands on disk, so it
+has to be read out again on every new install; the value in the repo's cmdline
+applies only to this machine:
+
+```sh
+sudo btrfs subvolume create /var/swap
+sudo btrfs filesystem mkswapfile --size 8G /var/swap/swapfile
+sudo semanage fcontext -a -t swapfile_t '/var/swap(/.*)?'
+sudo restorecon -Rv /var/swap
+echo '/var/swap/swapfile none swap defaults,pri=0 0 0' | sudo tee -a /etc/fstab
+sudo swapon -a
+sudo cp system/etc/dracut.conf.d/resume.conf /etc/dracut.conf.d/
+sudo dracut -f --regenerate-all
+sudo grubby --update-kernel=ALL --args="resume=UUID=$(findmnt -no UUID /) \
+     resume_offset=$(sudo btrfs inspect-internal map-swapfile -r /var/swap/swapfile)"
+sudo install -Dm644 system/etc/systemd/logind.conf.d/91-lid-hibernate.conf \
+     /etc/systemd/logind.conf.d/91-lid-hibernate.conf
+sudo systemctl reload systemd-logind
 ```
 
 ## 7. Services that are switched off
