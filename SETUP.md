@@ -225,6 +225,26 @@ sudo cp system/usr/lib/systemd/system-sleep/* /usr/lib/systemd/system-sleep/
 sudo chmod +x /usr/lib/systemd/system-sleep/*
 ```
 
+The proprietary `wl` driver has three quirks that matter for the home wifi:
+
+- It cannot join WPA2/WPA3 mixed networks: NetworkManager always offers
+  `WPA-PSK-SHA256` as well, and `wl` rejects the association, which nmcli
+  reports misleadingly as "network could not be found". The access point has
+  to run plain WPA2-PSK.
+- It does not deauthenticate cleanly on disconnect or suspend. The access
+  point keeps the stale station and ignores new authentication until its
+  inactivity timer fires, so reconnects after a short sleep hang for minutes.
+  Fix on the router side (`ap_max_inactivity` 60 s instead of 300 s) and keep
+  NetworkManager from giving up meanwhile:
+
+  ```sh
+  sudo nmcli con mod <ssid> 802-11-wireless-security.pmf disable \
+       connection.autoconnect-retries 0 connection.auth-retries 0 \
+       connection.autoconnect-priority 10
+  ```
+- Never `modprobe -r wl` to recover it: the reload crashes the driver
+  (`Scan_results error (-22)`) and wifi stays dead until a reboot.
+
 Closing the lid hibernates instead of suspending. zram cannot hold a
 hibernation image, so an 8 GiB swapfile sits in its own btrfs subvolume at
 priority 0 (zram keeps priority 100 for normal swapping). The swapfile needs
