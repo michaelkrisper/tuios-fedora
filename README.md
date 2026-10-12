@@ -12,7 +12,7 @@ noticeably on a battery this old. What is left boots in about 15 seconds into
 974 MiB of used RAM.
 
 ```
- 53% ↓0.0Mbit ↑12.4Mbit 󰁹78% 1:35h 21.9W  12:41
+ 53%  ↓0.0 ↑12.4 󰁹78% 1:35h 21.9W  12:41
 ```
 
 ## What is in here

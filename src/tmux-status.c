@@ -125,20 +125,27 @@ static long rate(unsigned long now, unsigned long prev, long secs) {
     return (long)((now - prev) / (unsigned long)secs);
 }
 
-// Rate als Mbit/s mit einer Nachkommastelle: "0.0Mbit", "33.2Mbit".
+// Rate in Mbit/s mit einer Nachkommastelle, ohne Einheit: "0.0", "33.2".
+// Die Einheit steht nirgends -- in der eigenen Leiste ist sie bekannt.
 // Alles unter 0,1 Mbit ist Hintergrundrauschen und wird zu 0.0 --
-// feiner aufzuloesen bringt nichts.
+// feiner aufzuloesen bringt nichts. Gedeckelt bei 99.9, damit das Feld
+// hoechstens zweistellig wird (die Leitung schafft ohnehin ~50).
 // Mbit ist dezimal (1e6 bit), wie bei Leitungsangaben ueblich:
 // Bytes/s * 8 / 1e6, in Zehnteln also Bytes/s / 12500.
+static long tenths(long bps) {
+    long t = bps / 12500;
+    return t > 999 ? 999 : t;
+}
+
 // Breite des Ganzzahlteils, damit der Aufrufer vor dem Pfeil auffuellen kann
 static int ratewidth(long bps) {
-    return bps < 0 ? 2 : digits(bps / 125000);
+    return bps < 0 ? 2 : digits(tenths(bps) / 10);
 }
 
 static void putrate(long bps) {
-    if (bps < 0) { put("--.-Mbit"); return; }
-    long tenths = bps / 12500;
-    putnum(tenths / 10, 0); put("."); putnum(tenths % 10, 0); put("Mbit");
+    if (bps < 0) { put("--.-"); return; }
+    long t = tenths(bps);
+    putnum(t / 10, 0); put("."); putnum(t % 10, 0);
 }
 
 // Prozent aus zwei Zaehlerstaenden, -1 wenn kein brauchbares Delta vorliegt
@@ -197,9 +204,9 @@ static void render(long cpu, long rxr, long txr) {
     put("");
     if (cpu < 0) put("--"); else putnum(cpu, 0);
     put("%#[fg=#cdd6f4] ");
-    pad(3 - ratewidth(rxr));
+    pad(2 - ratewidth(rxr));
     put("#[fg=#94e2d5]↓"); putrate(rxr);
-    put(" "); pad(3 - ratewidth(txr)); put("↑"); putrate(txr);
+    put(" "); pad(2 - ratewidth(txr)); put("↑"); putrate(txr);
     put("#[fg=#cdd6f4] ");
     long cap = num(BATDIR "capacity");
     char st[32];
