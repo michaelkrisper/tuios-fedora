@@ -37,6 +37,7 @@ bindsym $mod+Left      focus left
 bindsym $mod+Right     focus right
 bindsym $mod+Return    exec $term
 bindsym $mod+b         exec $browser
+bindsym $mod+e         exec $term yazi
 bindsym $mod+d         exec fuzzel
 bindsym $mod+q         kill
 bindsym $mod+f         fullscreen toggle

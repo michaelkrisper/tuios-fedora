@@ -43,6 +43,7 @@ sudo dnf install -y \
   tlp powertop thermald pciutils zram-generator grubby \
   NetworkManager-wifi \
   git gh ripgrep fd-find bat eza fzf jq htop git-delta
+sudo dnf copr enable -y lihaohong/yazi && sudo dnf install -y yazi
 ```
 
 Wifi needs the out-of-tree Broadcom driver — the BCM4360 has no in-kernel
