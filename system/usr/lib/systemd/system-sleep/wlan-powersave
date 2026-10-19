@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-# via systemd-run, damit das Warten auf den Connect nicht mit
-# systemd-suspend.service abgeraeumt wird
-[ "$1" = "post" ] || exit 0
-systemd-run --quiet --collect \
-    --unit=wlan-powersave-resume \
-    --description="WLAN power_save nach Connect aktivieren" \
-    /usr/local/bin/wlan-powersave.sh

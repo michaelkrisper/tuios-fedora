@@ -1,0 +1,14 @@
+[Unit]
+Description=WLAN beim Herunterfahren sauber vom AP abmelden
+# Stop laeuft vor dem Stop von NetworkManager
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=-/usr/bin/timeout 5 /usr/bin/nmcli device disconnect wlp3s0
+
+[Install]
+WantedBy=multi-user.target

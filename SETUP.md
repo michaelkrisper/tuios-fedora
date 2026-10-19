@@ -203,7 +203,7 @@ sudo cp system/etc/systemd/system/*.service system/etc/systemd/system/*.timer \
      /etc/systemd/system/
 sudo cp system/etc/mbpfan.conf /etc/mbpfan.conf
 sudo systemctl daemon-reload
-sudo systemctl enable --now tlp mbpfan auto-update.timer
+sudo systemctl enable --now tlp mbpfan auto-update.timer wlan-deauth
 sudo systemctl mask tlp-pd
 ```
 
@@ -213,6 +213,7 @@ sudo systemctl mask tlp-pd
 | `mbpfan` | fan curve; the Apple SMC needs one, nothing else provides it |
 | `auto-update.timer` | daily dnf/flatpak/npm update **[fedora]** |
 | `specialkeysd` | the key daemon from step 5 |
+| `wlan-deauth` | disconnects wifi cleanly at shutdown; NetworkManager exits without deauthenticating, so the access point would keep a stale station |
 
 Suspend hooks go to `/usr/lib/systemd/system-sleep/`, **not** `/etc/systemd/`:
 SELinux labels files under `/etc` as `etc_t`, `systemd-sleep` refuses to run
@@ -231,11 +232,12 @@ The proprietary `wl` driver has three quirks that matter for the home wifi:
   `WPA-PSK-SHA256` as well, and `wl` rejects the association, which nmcli
   reports misleadingly as "network could not be found". The access point has
   to run plain WPA2-PSK.
-- It does not deauthenticate cleanly on disconnect or suspend. The access
-  point keeps the stale station and ignores new authentication until its
-  inactivity timer fires, so reconnects after a short sleep hang for minutes.
-  Fix on the router side (`ap_max_inactivity` 60 s instead of 300 s) and keep
-  NetworkManager from giving up meanwhile:
+- Without an explicit disconnect the access point keeps a stale station and
+  can ignore new authentication until its inactivity timer fires, so the next
+  connect hangs. Before suspend and hibernate NetworkManager already
+  deauthenticates on its own; at shutdown it just exits, which is what
+  `wlan-deauth.service` covers. Keep NetworkManager from giving up while
+  reconnecting:
 
   ```sh
   sudo nmcli con mod <ssid> 802-11-wireless-security.pmf disable \
