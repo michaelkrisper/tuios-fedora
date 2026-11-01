@@ -80,12 +80,12 @@ bar {
     binding_mode_indicator no
     tray_output none
     colors {
-        background #000000
+        background #11111b
         statusline #cdd6f4
         #                  Rahmen  Hintergr. Text
         focused_workspace  #89b4fa #89b4fa   #1e1e2e
-        active_workspace   #000000 #000000   #cdd6f4
-        inactive_workspace #000000 #000000   #a6adc8
+        active_workspace   #11111b #11111b   #cdd6f4
+        inactive_workspace #11111b #11111b   #a6adc8
         urgent_workspace   #f38ba8 #f38ba8   #1e1e2e
     }
 }

@@ -65,7 +65,16 @@ if command -v fzf >/dev/null; then
     export FZF_CTRL_T_OPTS='--preview "bat --style=numbers --color=always --line-range=:60 {} 2>/dev/null || ls -la {}"'
 fi
 
-# Fenstertitel = Arbeitspfad; swaybar-status zeigt ihn als Tab, die Leiste sucht
-# darueber die Claude-Werte des Tabs (statusline --bar schreibt denselben Titel).
-__title() { printf '\e]2;%s\a' "${PWD/#$HOME/\~}"; }
-PROMPT_COMMAND="__title${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+# Fenstertitel = Arbeitspfad, waehrend ein Befehl laeuft "<pfad>: <befehl>".
+# swaybar-status zeigt ihn als Tab und sucht ueber den Teil vor ": " die
+# Claude-Werte des Tabs (statusline --bar schreibt "<pfad>: <sessiontitel>").
+# Der DEBUG-Trap feuert vor jedem einfachen Befehl; __title_armed sorgt dafuer,
+# dass nur der erste nach dem Prompt den Titel setzt.
+__title() { printf '\e]2;%s\a' "${PWD/#$HOME/\~}"; __title_armed=1; }
+__title_cmd() {
+    [ -n "$__title_armed" ] || return 0
+    __title_armed=
+    printf '\e]2;%s: %s\a' "${PWD/#$HOME/\~}" "${BASH_COMMAND//[[:cntrl:]]/ }"
+}
+trap __title_cmd DEBUG
+PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }__title"

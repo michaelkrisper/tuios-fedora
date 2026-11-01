@@ -231,7 +231,7 @@ static void col(const char *span) {
 // ---------------------------------------------------------------- Claude
 
 static char rtdir[256];             // $XDG_RUNTIME_DIR/claude-bar
-static char focus_key[512];         // Titel des aktiven Fensters
+static char focus_key[512];         // Pfad aus dem Titel des aktiven Fensters
 
 static void put_file(const char *name, long maxage) {
     char path[1024], b[600];
@@ -473,7 +473,7 @@ static char *ipc_call(int fd, uint32_t type, const char *msg) {
 
 #define MAXWS 64
 #define MAXLEAF 64
-#define MAXLEN 28                   // Tab-Beschriftung, laengere vorne gekuerzt
+#define MAXLEN 28                   // Tab-Beschriftung, siehe label()
 
 // Tiling-Fenster eines Teilbaums, zuletzt fokussiertes zuerst
 static void leaves(int node, int *out, int *n) {
@@ -523,19 +523,34 @@ static int workspaces(int root, int *ws) {
 
 // " und \ kommen nicht in Namen: sways Parser laesst \" stehen statt es
 // aufzuloesen. Gekuerzt wird vorne -- bei Pfaden zaehlt das Ende.
+// "<pfad>: <befehl/titel>" -> "<letztes pfadstueck>: <befehl/titel>", hinten
+// gekuerzt; ein reiner Pfad wird vorne gekuerzt, dort steht das Wichtige.
 static void label(char *dst, size_t cap, const char *t) {
     if (!t) t = "?";
+    char tmp[512];
+    const char *sep = strstr(t, ": ");
+    int tail = sep != NULL;
+    if (sep) {
+        const char *b = t;
+        for (const char *q = t; q < sep; q++) if (*q == '/') b = q + 1;
+        snprintf(tmp, sizeof tmp, "%.*s%s", (int)(sep - b), b, sep);
+        t = tmp;
+    }
     size_t cps = 0;
     for (const char *p = t; *p; p++) if ((*p & 0xC0) != 0x80) cps++;
-    const char *p = t;
+    const char *p = t, *end = t + strlen(t);
     size_t o = 0;
-    if (cps > MAXLEN) {
+    if (cps > MAXLEN && !tail) {
         size_t skip = cps - (MAXLEN - 1);
         while (skip) { p++; while ((*p & 0xC0) == 0x80) p++; skip--; }
         memcpy(dst, "\xE2\x80\xA6", 3); o = 3;           // …
+    } else if (cps > MAXLEN) {
+        end = t;
+        for (size_t k = 0; k < MAXLEN - 1; k++) { end++; while ((*end & 0xC0) == 0x80) end++; }
     }
-    for (; *p && o + 1 < cap; p++)
+    for (; p < end && o + 4 < cap; p++)
         dst[o++] = *p == '"' ? '\'' : *p == '\\' ? '/' : *p == '\n' ? ' ' : *p;
+    if (end < t + strlen(t) && o + 4 <= cap) { memcpy(dst + o, "\xE2\x80\xA6", 3); o += 3; }
     dst[o] = 0;
 }
 
@@ -601,6 +616,8 @@ static void tidy(int fd, const char *change, double con, int start) {
     int f = focused_node(root);
     const char *ft = f >= 0 && jget(f, "pid") >= 0 ? jsget(f, "name") : NULL;
     snprintf(focus_key, sizeof focus_key, "%s", ft ? ft : "");
+    char *sep = strstr(focus_key, ": ");               // "<pfad>: <befehl/titel>"
+    if (sep) *sep = 0;
     if (cmdlen) free(ipc_call(fd, 0, cmdbuf));
     free(tree);
 }
