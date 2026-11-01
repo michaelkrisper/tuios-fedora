@@ -1,10 +1,14 @@
 # Nachfolger des cage-Kiosks: gleiche Idee (foot bildschirmfuellend), aber mit
 # Fensterwechsel und einer Zwischenablage, die alle Clients teilen.
-# Alt-Tab bleibt absichtlich frei -- das gehoert tmux. Hier zaehlt Super (Cmd).
+# Seit 2026-11-01 ohne tmux: jedes Terminal ist ein eigenes foot-Fenster, alle
+# Fenster (auch grafische wie Chrome) liegen als Tabs auf einem Workspace.
 
 set $mod Mod4
-set $term foot
-set $browser google-chrome-stable --ozone-platform-hint=auto --force-device-scale-factor=2
+# Ein foot-Server fuer alle Fenster: Schriften und Glyphen-Cache gibt es nur
+# einmal. Einzelne foot-Prozesse kosten je ~36 MB, ein footclient-Fenster
+# nur seinen Scrollback.
+set $term footclient
+set $browser ~/.local/bin/google-chrome-stable --ozone-platform-hint=auto
 
 # Fenster liegen als Tabs uebereinander statt nebeneinander: jedes ist voll
 # gross, die Tableiste oben zeigt, was sonst noch offen ist.
@@ -13,12 +17,11 @@ default_border none
 # --i3 blendet die Tableiste aus, solange nur ein Fenster im Tab-Container
 # liegt -- bei einem einzelnen foot sieht es also aus wie frueher unter cage.
 hide_edge_borders --i3 smart
-font pango:Cascadia Mono NF 16
+font pango:Cascadia Mono NF 8
 
 focus_follows_mouse no
-# Scale 1 wie unter cage, damit foot.ini (Schrift 22, dpi-aware=no) passt.
-# Chrome bekommt seinen HiDPI-Faktor stattdessen per Flag.
-output eDP-1 scale 1
+# Scale 2 (Retina): alle Clients rendern in normaler Groesse, ohne Flags pro App.
+output eDP-1 scale 2
 
 # Touchpad: Antippen zaehlt als Klick (libinput hat tap standardmaessig aus).
 # Zwei Finger = rechte Taste, drei = mittlere.
@@ -31,11 +34,15 @@ input "1452:602:bcm5974" {
     dwt enabled
 }
 
-bindsym $mod+Tab       focus next
-bindsym $mod+Shift+Tab focus prev
+# Tabs sind Workspaces (siehe bar unten).
+bindsym Mod1+Tab       workspace next_on_output
+bindsym Mod1+Shift+Tab workspace prev_on_output
+bindsym $mod+Tab       workspace next_on_output
+bindsym $mod+Shift+Tab workspace prev_on_output
 bindsym $mod+Left      focus left
 bindsym $mod+Right     focus right
 bindsym $mod+Return    exec $term
+bindsym $mod+c         exec $term bash -lc 'claude; exec bash -l'
 bindsym $mod+b         exec $browser
 bindsym $mod+e         exec $term yazi
 bindsym $mod+d         exec fuzzel
@@ -44,8 +51,8 @@ bindsym $mod+f         fullscreen toggle
 bindsym $mod+Shift+c   reload
 bindsym $mod+Shift+e   exec swaymsg exit
 
-# KEY_SCALE (die F3-Sondertaste) wird bewusst NICHT hier gebunden: specialkeysd
-# liest /dev/input direkt und belegt sie bereits. Zwei Ebenen auf derselben
+# KEY_SCALE/KEY_DASHBOARD (F3 weiter, F4 neues Terminal) werden bewusst NICHT
+# hier gebunden: specialkeysd liest /dev/input direkt und schickt swaymsg. Zwei Ebenen auf derselben
 # Taste heissen zwei Aktionen pro Druck.
 
 # Helligkeit macht specialkeysd (System-Dienst, liest /dev/input direkt) --
@@ -54,7 +61,37 @@ bindsym $mod+Shift+e   exec swaymsg exit
 # Ergebnisse addierten sich (1 % + 5 % = 6 %) und die Unterkante blieb bei
 # 5 % haengen.
 
-# Startfenster: foot mit tmux/Claude (Stufe 2 aus tty-claude.sh). Nur dieses
-# eine bekommt die Kiosk-Stufe -- weitere Terminals (Super+Return) sollen eine
-# normale Shell sein und nicht dieselbe tmux-Session spiegeln.
-exec env AUTOCLAUDE_STAGE=kiosk $term
+# Tabs im Catppuccin-Look der frueheren tmux-Leiste.
+#                       Rahmen  Hintergr. Text    Indikator
+client.focused          #89b4fa #89b4fa   #1e1e2e #89b4fa
+client.focused_inactive #181825 #181825   #cdd6f4 #181825
+client.unfocused        #181825 #181825   #a6adc8 #181825
+
+# Eine Leiste wie frueher bei tmux: links die Tabs, rechts CPU, Netz, Akku, Uhr.
+# Die Tabs sind Workspace-Buttons -- swaybar-status legt jedes Fenster auf einen
+# eigenen Workspace "N:Titel", strip_workspace_numbers blendet das "N:" aus.
+# sways eigene Tableiste taugt dafuer nicht: sie ist eine zweite Leiste ueber
+# dem Fenster, ohne Platz fuer den Status.
+bar {
+    position bottom
+    status_command ~/.local/bin/swaybar-status --loop 5
+    pango_markup enabled
+    strip_workspace_numbers yes
+    binding_mode_indicator no
+    tray_output none
+    colors {
+        background #181825
+        statusline #cdd6f4
+        #                  Rahmen  Hintergr. Text
+        focused_workspace  #89b4fa #89b4fa   #1e1e2e
+        active_workspace   #181825 #181825   #cdd6f4
+        inactive_workspace #181825 #181825   #a6adc8
+        urgent_workspace   #f38ba8 #f38ba8   #1e1e2e
+    }
+}
+
+# Startfenster: foot mit Claude (Stufe 2 aus tty-claude.sh). Nur dieses eine
+# bekommt die Kiosk-Stufe -- weitere Terminals (Super+Return) sind eine
+# normale Shell, Super+C ein weiteres Claude.
+exec foot --server
+exec sh -c 'until [ -S "$XDG_RUNTIME_DIR/foot-$WAYLAND_DISPLAY.sock" ]; do sleep 0.05; done; AUTOCLAUDE_STAGE=kiosk exec footclient -E'

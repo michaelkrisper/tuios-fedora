@@ -1,20 +1,19 @@
 CFLAGS ?= -O2 -Wall -Wextra
 PREFIX ?= $(HOME)/.local
 
-all: tmux-status specialkeysd
+all: swaybar-status specialkeysd
 
-tmux-status: src/tmux-status.c
+swaybar-status: src/swaybar-status.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 specialkeysd: src/specialkeysd.c
 	$(CC) $(CFLAGS) -o $@ $<
 
-# tmux haelt den laufenden #()-Job an der alten Inode fest und startet ihn
-# nicht von selbst neu -- darum nach dem Kopieren beenden, tmux respawnt.
-install: tmux-status
-	install -Dm755 tmux-status $(PREFIX)/bin/tmux-status
-	install -Dm755 bin/tmux-cycle-view $(PREFIX)/bin/tmux-cycle-view
-	-pkill -x tmux-status
+# swaybar startet status_command nicht von selbst neu -- nach dem Kopieren
+# per "swaymsg reload" neu starten lassen.
+install: swaybar-status
+	install -Dm755 swaybar-status $(PREFIX)/bin/swaybar-status
+	-swaymsg reload
 
 # Braucht root: der Dienst liest /dev/input und schreibt /sys/class/backlight,
 # beides darf nur root. Darum getrennt von "install".
@@ -26,6 +25,6 @@ install-daemon: specialkeysd
 	sudo systemctl enable --now specialkeysd
 
 clean:
-	rm -f tmux-status specialkeysd
+	rm -f swaybar-status specialkeysd
 
 .PHONY: all install install-daemon clean

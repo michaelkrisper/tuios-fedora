@@ -21,13 +21,12 @@ home/local/bin/       ->  ~/.local/bin
 system/               root-owned files, mirroring / — copy with sudo
 ```
 
-The live machine symlinks the four files that change often back into this
+The live machine symlinks the three files that change often back into this
 repo, so there are no drifting copies:
 
 ```sh
-ln -sf ~/tuios-fedora/home/config/tmux/tmux.conf ~/.config/tmux/tmux.conf
 ln -sf ~/tuios-fedora/home/config/sway/config    ~/.config/sway/config
-ln -sf ~/tuios-fedora/src/tmux-status.c          ~/.local/src/tmux-status.c
+ln -sf ~/tuios-fedora/src/swaybar-status.c       ~/.local/src/swaybar-status.c
 ln -sf ~/tuios-fedora/src/specialkeysd.c         ~/.local/src/specialkeysd.c
 ```
 
@@ -37,7 +36,7 @@ ln -sf ~/tuios-fedora/src/specialkeysd.c         ~/.local/src/specialkeysd.c
 
 ```sh
 sudo dnf install -y \
-  sway swaybg foot fuzzel tmux \
+  sway swaybg foot fuzzel \
   cascadia-mono-nf-fonts terminus-fonts-console \
   brightnessctl wl-clipboard grim slurp kbd \
   tlp powertop thermald pciutils zram-generator grubby \
@@ -78,9 +77,10 @@ there the chain is:
 ```
 tty1 login -> ~/.bash_profile -> ~/.config/tty-claude.sh
       stage 1   on /dev/tty1, no WAYLAND_DISPLAY:  AUTOCLAUDE_STAGE=done sway
-      sway      config execs:                      env AUTOCLAUDE_STAGE=kiosk foot
-      stage 2   foot's login shell sources the script again, sees "kiosk",
-                and starts tmux + claude
+      sway      config execs:                      foot --server, then
+                                                   AUTOCLAUDE_STAGE=kiosk footclient -E
+      stage 2   the login shell sources the script again, sees "kiosk",
+                and starts claude
 ```
 
 `AUTOCLAUDE_STAGE` is what keeps the script from recursing into itself when it
@@ -100,7 +100,7 @@ Two things this depends on and that are easy to get wrong:
   restart loop makes the machine unusable over ssh-less serial.
 
 Escape hatches, created with `touch`, deliberately not in this repo:
-`~/.no-sway`, `~/.no-tmux`, `~/.no-autoclaude`.
+`~/.no-sway`, `~/.no-autoclaude`.
 
 `bin/bootmode` used to switch the default target between tty and KDE. Plasma
 was uninstalled on 2026-09-20, so the `kde` branch now only prints a hint;
@@ -116,7 +116,16 @@ cp home/config/sway/config ~/.config/sway/config
 cp home/config/foot/foot.ini ~/.config/foot/foot.ini
 ```
 
-sway runs one fullscreen `foot`. The console font and keymap matter because
+Every window gets its own workspace: `swaybar-status` moves new windows to a
+fresh one and names it "N:<title>"; with `strip_workspace_numbers` the
+workspace buttons in swaybar become tabs, next to the status line -- one bar,
+like tmux had. (sway's own tabbed title bar is a second bar above the window
+with no room for status.)
+Terminals are `footclient` windows of one `foot --server`, so fonts and glyph
+cache exist once (~7 MB per extra window instead of ~36 MB per foot process).
+The server dying takes all terminals with it -- there is no detach like tmux had.
+
+The console font and keymap matter because
 the plain text console is still there underneath **[fedora]**:
 
 ```sh
@@ -130,24 +139,23 @@ the comments in the config record both times that happened.
 
 ---
 
-## 4. tmux and the status line
+## 4. Status line and keys
 
 ```sh
-mkdir -p ~/.config/tmux
-ln -sf $PWD/home/config/tmux/tmux.conf ~/.config/tmux/tmux.conf
-make && make install                    # tmux-status + tmux-cycle-view -> ~/.local/bin
+make && make install                    # swaybar-status -> ~/.local/bin, swaymsg reload
 ```
 
-Keys, once running:
+swaybar runs `swaybar-status --loop 5` (Pango output, see README). For the
+Claude fields, Claude Code's statusLine command is `statusline --bar` from
+claude-statusline and `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` is set in
+`~/.claude/settings.json` env, so the title stays the working directory.
 
 | | |
 |---|---|
-| `Alt-Tab`, Exposé key | next window; next pane when everything is gathered |
-| `Ctrl` + Exposé key | cycle view: side by side → tiled → tabs |
-| Dashboard key, `Ctrl-T` | new terminal, inside the current arrangement |
-| `prefix + Space` | same cycle, from inside tmux |
-| `prefix + A/T/B` | gather / tile / split back out, individually |
-| `prefix + C` | new window running Claude |
+| `Alt-Tab`, `Super-Tab`, Exposé key | next tab (workspace) |
+| Dashboard key, `Super-Return` | new terminal |
+| `Super-C` | new terminal running Claude |
+| `Super-B` | Chrome |
 
 ---
 
@@ -160,7 +168,7 @@ make install-daemon        # -> /usr/local/sbin, unit, enable --now
 Without a desktop nothing handles brightness, keyboard backlight, idle dimming
 or the Exposé/Dashboard keys. This daemon reads `/dev/input` directly and
 writes `/sys/class/backlight`, which is why it runs as root and drops to the
-desktop user to talk to tmux. `bin/bl` sets the backlight by percentage from a
+desktop user to call `swaymsg`. `bin/bl` sets the backlight by percentage from a
 shell.
 
 ---
@@ -180,7 +188,7 @@ resume=UUID=<root-uuid> resume_offset=<see below>
 
 `acpi_osi=!Darwin` stops the firmware pretending to be macOS; without it the
 generic ACPI battery is replaced by the SBS driver, which reports µAh instead
-of µWh (`tmux-status` handles both).
+of µWh (`swaybar-status` handles both).
 
 Hardware that is switched off because this machine never uses it — camera,
 both audio controllers including the internal microphone, and the Thunderbolt
@@ -323,7 +331,7 @@ systemctl --user mask pipewire pipewire.socket pipewire-pulse \
 
 ## 9. Porting to another distribution
 
-Unchanged: everything under `home/`, `src/`, `bin/`, the tmux/sway/foot
+Unchanged: everything under `home/`, `src/`, `bin/`, the sway/foot
 configuration, the daemon and its unit, the masking lists, the modprobe
 blacklists, sysctl and udev rules.
 

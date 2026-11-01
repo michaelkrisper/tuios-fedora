@@ -52,8 +52,8 @@ if [ -f '/home/michi/.local/share/google-cloud-sdk/completion.bash.inc' ]; then 
 # Alt-C   in einen Unterordner wechseln (Volltextsuche)
 # Ctrl-R  Kommandohistorie durchsuchen
 # Ctrl-F  Dateipfad in die Zeile einfuegen
-# Ctrl-T waere fzfs Vorgabe fuer das letzte, das faengt aber tmux fuer neue
-# Fenster ab und kommt hier nie an -- deshalb Ctrl-F.
+# Ctrl-F statt fzfs Vorgabe Ctrl-T (das hat frueher tmux abgefangen; die
+# Belegung ist geblieben).
 if command -v fzf >/dev/null; then
     eval "$(fzf --bash)"
     bind -m emacs-standard -x '"\C-f": fzf-file-widget'
@@ -64,3 +64,8 @@ if command -v fzf >/dev/null; then
     export FZF_ALT_C_OPTS='--preview "ls -1 --color=always {} | head -60"'
     export FZF_CTRL_T_OPTS='--preview "bat --style=numbers --color=always --line-range=:60 {} 2>/dev/null || ls -la {}"'
 fi
+
+# Fenstertitel = Arbeitspfad; swaybar-status zeigt ihn als Tab, die Leiste sucht
+# darueber die Claude-Werte des Tabs (statusline --bar schreibt denselben Titel).
+__title() { printf '\e]2;%s\a' "${PWD/#$HOME/\~}"; }
+PROMPT_COMMAND="__title${PROMPT_COMMAND:+; $PROMPT_COMMAND}"

@@ -1,7 +1,9 @@
 // specialkeysd: bedient die Sondertasten, die im Kiosk sonst niemand mehr
 // abfaengt -- Helligkeit (Display und Tastatur), Exposé/F3 zum Umschalten
-// des tmux-Fensters, Ctrl+Exposé fuer den Ansichtswechsel -- und dimmt bei
+// des sway-Fensters -- und dimmt bei
 // Untaetigkeit ab.
+// Seit 2026-11-01 ohne tmux: F3/F4 gehen per swaymsg an sway, die Fenster
+// liegen dort als Tabs. Ctrl+F3 (Ansichtswechsel) ist entfallen.
 // Unter cage gibt es weder Idle- noch Tastenverwaltung; powerdevil und
 // kglobalaccel haben das frueher gemacht.
 //
@@ -14,6 +16,7 @@
 #define _GNU_SOURCE
 #include <dirent.h>
 #include <fcntl.h>
+#include <glob.h>
 #include <grp.h>
 #include <linux/input.h>
 #include <poll.h>
@@ -38,7 +41,7 @@
 #ifndef KBMAX
 #define KBMAX "/sys/class/leds/smc::kbd_backlight/max_brightness"
 #endif
-#ifndef KIOSKUSER                // in dessen Namen tmux gerufen wird
+#ifndef KIOSKUSER                // in dessen Namen swaymsg gerufen wird
 #define KIOSKUSER "michi"
 #endif
 #ifndef ACPATH
@@ -47,7 +50,6 @@
 #define MAXFD 32
 #define RESCAN 5                     // Sekunden: neue Eingabegeraete einsammeln
 #define STEPMS 120                   // Entprellung: Video-Bus *und* Tastatur
-#define CYCLE "/home/michi/.local/bin/tmux-cycle-view"
                                      // melden denselben Tastendruck
 #define WAKE "/run/user/%u/specialkeysd-wake"
                                      // Wer ohne Eingabegeraet schreibt -- das
@@ -77,18 +79,23 @@ struct dimmer {
     long        laststep;
 };
 
-// Wer tmux gehoert; root darf dessen Socket nicht einfach benutzen.
+// Wem sway gehoert; root darf dessen Socket nicht einfach benutzen.
 static uid_t u_uid; static gid_t u_gid; static char *u_name, *u_home;
 
-// F3 schaltet weiter (wie Alt-Tab), F4 macht ein Fenster auf (wie Ctrl-T).
-// Nicht benoetigte Argumente sind NULL und beenden die execlp-Liste.
-static void tmux_do(const char *a1, const char *a2, const char *a3) {
+// F3 schaltet weiter (wie Alt-Tab), F4 macht ein Terminal auf.
+// Der Socket-Name enthaelt die PID von sway, darum per glob suchen; ohne
+// laufendes sway passiert nichts.
+static void sway_do(const char *cmd) {
     if (!u_home) return;
     pid_t p = fork();
     if (p != 0) return;                      // nicht warten, SIGCHLD ist ignoriert
     if (initgroups(u_name, u_gid) || setgid(u_gid) || setuid(u_uid)) _exit(127);
+    char pat[64]; glob_t g;
+    snprintf(pat, sizeof pat, "/run/user/%u/sway-ipc.*.sock", (unsigned)u_uid);
+    if (glob(pat, 0, NULL, &g) || g.gl_pathc == 0) _exit(1);
+    setenv("SWAYSOCK", g.gl_pathv[g.gl_pathc - 1], 1);
     setenv("HOME", u_home, 1);
-    execlp("tmux", "tmux", a1, a2, a3, (char *)NULL);
+    execlp("swaymsg", "swaymsg", cmd, (char *)NULL);
     _exit(127);
 }
 
@@ -195,7 +202,7 @@ int main(int argc, char **argv) {
 
     time_t last = time(NULL), lastscan = last;
     long saved = 0, savedkb = 0, kbd_prev = 0, lastwin = 0;
-    int dimmed = 0, ctrl = 0;      // Ctrl-Zustand ueber Poll-Runden hinweg
+    int dimmed = 0;
     struct input_event ev[64];
 
     for (;;) {
@@ -211,12 +218,6 @@ int main(int argc, char **argv) {
                     got = 1;
                     for (size_t k = 0; k < (size_t)n / sizeof ev[0]; k++) {
                         if (ev[k].type != EV_KEY) continue;
-                        // Ctrl mitfuehren: nur hier interessiert auch das
-                        // Loslassen (value 0), darum vor dem Filter.
-                        if (ev[k].code == KEY_LEFTCTRL || ev[k].code == KEY_RIGHTCTRL) {
-                            ctrl = ev[k].value != 0;
-                            continue;
-                        }
                         if (ev[k].value == 0) continue;
                         switch (ev[k].code) {
                         case KEY_BRIGHTNESSUP:    dir  =  1; break;
@@ -224,7 +225,7 @@ int main(int argc, char **argv) {
                         case KEY_KBDILLUMUP:      kdir =  1; break;
                         case KEY_KBDILLUMDOWN:    kdir = -1; break;
                         case KEY_KBDILLUMTOGGLE:  ktog =  1; break;
-                        case KEY_SCALE:           nextwin = ctrl ? 2 : 1; break;
+                        case KEY_SCALE:           nextwin =  1; break;
                         case KEY_DASHBOARD:       nextwin = -1; break;
                         }
                     }
@@ -257,12 +258,8 @@ int main(int argc, char **argv) {
                 long t = nowms();
                 if (t - lastwin >= STEPMS) {
                     lastwin = t;
-                    // Weiterschalten und Ansichtswechsel liegen im Skript,
-                    // damit beide auch dann stimmen, wenn alle Terminals in
-                    // einem Fenster zusammengeholt sind.
-                    if (nextwin == 2) tmux_do("run-shell", CYCLE, NULL);
-                    else if (nextwin > 0) tmux_do("run-shell", CYCLE " --next", NULL);
-                    else tmux_do("run-shell", CYCLE " --new", NULL);
+                    if (nextwin > 0) sway_do("workspace next_on_output");
+                    else sway_do("exec footclient");
                 }
             }
             if (dir)  step(&disp, dir);

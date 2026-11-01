@@ -35,11 +35,6 @@ elif [ "$AUTOCLAUDE_STAGE" = "kiosk" ]; then
     # Stufe 2 - in foot unter sway/cage
     export AUTOCLAUDE_STAGE=done
     cd "$HOME"
-    # tmux: mehrere Claude-Sessions nebeneinander, ueberlebt einen Kiosk-Neustart.
-    # Ctrl-b C = neues Claude-Fenster, Ctrl-b w = Fensterliste, Ctrl-b d = detach
-    if command -v tmux >/dev/null && [ ! -e "$HOME/.no-tmux" ]; then
-        tmux new-session -A -s main "claude; exec bash -i"
-    else
-        claude
-    fi
+    # Weitere Claude-Sessions als eigene foot-Tabs: Super+C (sway).
+    claude
 fi

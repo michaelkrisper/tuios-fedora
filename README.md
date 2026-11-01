@@ -1,8 +1,10 @@
 # tuios-fedora
 
 A MacBook Pro 11,1 running Fedora that boots straight into a terminal — no
-desktop, no compositor chrome, no session manager. sway holds a single
-fullscreen `foot` window, tmux arranges the terminals inside it, and two small
+desktop, no compositor chrome, no session manager. every window gets its
+own sway workspace, and the workspace buttons in swaybar act as tabs next to
+the status line — terminals are `footclient` windows of a
+single `foot --server`, Chrome sits next to them as just another tab — and two small
 C programs fill the gaps the desktop used to cover: a status line and a daemon
 for the laptop's special keys.
 
@@ -19,11 +21,9 @@ noticeably on a battery this old. What is left boots in about 15 seconds into
 
 | | |
 |---|---|
-| `tmux-status.c` | status line: CPU load, network throughput, battery — dependency-free C |
+| `swaybar-status.c` | the one bar: tabs (one window per workspace, named after its title), Claude context + 5 h limit of the focused tab, CPU, network, battery, clock — dependency-free C |
 | `specialkeysd.c` | brightness, keyboard backlight, idle dimming, and the Exposé/Dashboard keys |
-| `tmux-cycle-view` | cycles the terminals between side-by-side, tiled and one-per-tab |
-| `tmux.conf` | the tmux setup those three plug into |
-| `sway.config` | one fullscreen terminal, touchpad, and deliberately *no* key bindings |
+| `sway.config` | bar with tabs + status, foot server, touchpad |
 | `specialkeysd.service` | runs the daemon as root, because `/dev/input` and backlight need it |
 
 `SETUP.md` documents how to reproduce the whole thing on a fresh Fedora.
@@ -35,11 +35,20 @@ make && make install          # -> ~/.local/bin
 make install-daemon           # -> /usr/local/sbin, needs sudo
 ```
 
-`make install` also kills any running `tmux-status`: tmux keeps the old inode
-of a `#()` job alive and will not respawn it just because the file on disk
-changed.
+`make install` also runs `swaymsg reload`: swaybar keeps the old binary running
+and only restarts `status_command` on reload.
 
 ## The status line
+
+In `--loop` mode the program also holds two sway IPC connections: every new
+window on an occupied workspace moves to a fresh one behind the last, every
+workspace is renamed "N:<window title>" (the bar strips the number), and
+closing the last window of the visible workspace jumps to the previous tab.
+The window title is the working directory (bash `PROMPT_COMMAND`, and
+`statusline --bar` from claude-statusline inside Claude Code). That same path
+keys `$XDG_RUNTIME_DIR/claude-bar/<path, / as %>`, where `statusline --bar`
+leaves the session's context gauge; `limits` holds the 5 h window. inotify on
+that directory redraws immediately.
 
 * **CPU** — busy percentage over the last interval, from `/proc/stat`. Turns
   red at 70 %.
@@ -54,10 +63,12 @@ changed.
 
 Colours are [Catppuccin Mocha](https://github.com/catppuccin/catppuccin).
 
-`--loop [seconds]` is the intended mode: tmux starts a `#()` job once and reads
+Output is Pango markup (`pango_markup enabled` in the bar block).
+
+`--loop [seconds]` is the intended mode: swaybar starts `status_command` once and reads
 lines from it for as long as the process lives, which avoids a fork/exec per
 tick — at roughly 1 ms that was by far the largest cost. The program exits by
-itself via SIGPIPE once tmux closes the read end, and only writes a line when
+itself via SIGPIPE once swaybar closes the read end, and only writes a line when
 the rendered output actually changed, so an idle bar causes no redraws at all.
 
 Without `--loop` it prints one line and keeps its counters in
@@ -68,32 +79,19 @@ be overridden at build time:
 make CFLAGS='-O2 -DBATDIR=\"/sys/class/power_supply/BAT1/\"'
 ```
 
-## The view cycle
-
-`tmux-cycle-view` cycles a session between three arrangements: every terminal
-side by side, the same panes tiled, and one window per terminal. `--next` steps
-to the next window, or to the next pane once everything is gathered. `--new`
-adds a terminal *inside* the current arrangement instead of always creating a
-window. Bound to `prefix + Space`, and to the Exposé key through the daemon.
-
-Called without a window id it has no tmux context to work from, so it resolves
-the session over `#{client_session}` from `list-clients`. Neither a bare
-`display -p` nor `display -p -c <client>` reports the session a client is
-actually looking at — both answer with the most recently used one, which is a
-different session more often than it sounds.
-
 ## specialkeysd
 
 Booting into a bare sway session means nothing handles the laptop's special
 keys any more — powerdevil and kglobalaccel used to. `specialkeysd` takes over:
 display and keyboard brightness, dimming after an idle timeout, and the
-Exposé/Dashboard keys, which drive the view cycle above. It reads `/dev/input`
+Exposé/Dashboard keys (F3 = next tab, F4 = new terminal). It reads `/dev/input`
 directly and writes `/sys/class/backlight`, so it runs as root and drops to the
-desktop user to talk to tmux.
+desktop user to call `swaymsg` (socket found by globbing
+`/run/user/UID/sway-ipc.*.sock`).
 
 The idle timeout is 30 minutes on battery and 60 on AC (`ExecStart` in the
 unit). Anything that writes text without touching a keyboard — the m5assistant
-dictation types straight into the tmux buffer with `send-keys` — counts as
+dictation, which types without a keyboard — counts as
 activity by touching `$XDG_RUNTIME_DIR/specialkeysd-wake`; the daemon only
 looks at the mtime and wakes the screen within five seconds.
 
