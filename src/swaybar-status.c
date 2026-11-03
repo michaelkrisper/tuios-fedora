@@ -699,9 +699,9 @@ int main(int argc, char **argv) {
     char cache[256]; const char *rt = getenv("XDG_RUNTIME_DIR");
     if (!rt) rt = "/tmp";
     int cl = (int)strlen(rt);
-    if (cl > (int)sizeof cache - 12) cl = (int)sizeof cache - 12;
+    if (cl > (int)sizeof cache - 14) cl = (int)sizeof cache - 14;
     memcpy(cache, rt, (size_t)cl);
-    memcpy(cache + cl, "/.tmux-cpu", 11);
+    memcpy(cache + cl, "/.swaybar-cpu", 14);
 
     char b[128]; long cpu = -1, rxr = -1, txr = -1;
     if (slurp(cache, b, sizeof b)) {
