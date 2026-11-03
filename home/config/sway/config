@@ -18,6 +18,9 @@ default_border none
 # liegt -- bei einem einzelnen foot sieht es also aus wie frueher unter cage.
 hide_edge_borders --i3 smart
 font pango:Cascadia Mono NF 8
+# Kein swaybg: jedes Fenster ist bildschirmfuellend, der Hintergrund ist nie
+# sichtbar -- spart den Prozess (8 MB) und seinen Vollbild-Puffer.
+swaybg_command -
 
 focus_follows_mouse no
 # Scale 2 (Retina): alle Clients rendern in normaler Groesse, ohne Flags pro App.

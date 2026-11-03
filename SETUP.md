@@ -125,6 +125,30 @@ Terminals are `footclient` windows of one `foot --server`, so fonts and glyph
 cache exist once (~7 MB per extra window instead of ~36 MB per foot process).
 The server dying takes all terminals with it -- there is no detach like tmux had.
 
+### foot with PGO (optional, measured)
+
+Fedora's foot is built without profile-guided optimisation (`foot --version`
+shows `-pgo`). A local PGO build used 19 % less CPU on 20 MB of log output and
+10 % less on foot's colour/scroll stress data (median of 5 runs each, headless
+sway, same foot.ini). It goes to `~/.local/opt`, the package stays as fallback:
+
+```sh
+sudo dnf install meson ninja-build scdoc fcft-devel wayland-protocols-devel \
+  utf8proc-devel tllist-devel pixman-devel wayland-devel libxkbcommon-devel
+git clone --depth 1 --branch 1.27.0 https://codeberg.org/dnkl/foot.git ~/.local/src/foot
+cd ~/.local/src/foot
+env -u WAYLAND_DISPLAY CFLAGS="-march=haswell" ./pgo/pgo.sh full-headless-sway . build-pgo \
+  --prefix=$HOME/.local/opt/foot-pgo -Ddocs=disabled -Dtests=false
+# the final build fails with -Werror=missing-profile (tokenize.c has no profile):
+meson configure build-pgo -Dwerror=false && ninja -C build-pgo
+meson install -C build-pgo   # errors at the systemd unit (/usr/lib), binaries are in
+ln -sf ~/.local/opt/foot-pgo/bin/foot ~/.local/opt/foot-pgo/bin/footclient ~/.local/bin/
+```
+
+`~/.local/bin` comes first in sway's PATH, so the next sway start picks it up.
+dnf no longer updates foot for you: rebuild when Fedora moves past 1.27.0, or
+remove the two symlinks to go back to the package.
+
 The console font and keymap matter because
 the plain text console is still there underneath **[fedora]**:
 
