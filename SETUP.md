@@ -14,7 +14,7 @@ distribution unchanged, which is the point of the split.
 
 ```
 src/                  the two C programs
-bin/                  scripts that go to ~/.local/bin
+tests/                their unit tests (make test)
 home/                 user files; home/config/x  ->  ~/.config/x
 home/bash_profile     ->  ~/.bash_profile      (loads the kiosk starter)
 home/local/bin/       ->  ~/.local/bin
@@ -36,7 +36,7 @@ ln -sf ~/tuios-fedora/src/specialkeysd.c         ~/.local/src/specialkeysd.c
 
 ```sh
 sudo dnf install -y \
-  sway swaybg foot fuzzel \
+  sway foot fuzzel \
   cascadia-mono-nf-fonts terminus-fonts-console \
   brightnessctl wl-clipboard grim slurp kbd \
   tlp powertop thermald pciutils zram-generator grubby \
@@ -102,8 +102,9 @@ Two things this depends on and that are easy to get wrong:
 Escape hatches, created with `touch`, deliberately not in this repo:
 `~/.no-sway`, `~/.no-autoclaude`.
 
-`bin/bootmode` used to switch the default target between tty and KDE. Plasma
-was uninstalled on 2026-09-20, so the `kde` branch now only prints a hint;
+`home/local/bin/bootmode` switches the default target between tty
+(`multi-user.target`) and KDE (`graphical.target`). Plasma was uninstalled on
+2026-09-20, so the `kde` branch no longer leads to a desktop;
 `graphical.target` has no display manager left.
 
 ---
@@ -192,7 +193,7 @@ make install-daemon        # -> /usr/local/sbin, unit, enable --now
 Without a desktop nothing handles brightness, keyboard backlight, idle dimming
 or the Exposé/Dashboard keys. This daemon reads `/dev/input` directly and
 writes `/sys/class/backlight`, which is why it runs as root and drops to the
-desktop user to call `swaymsg`. `bin/bl` sets the backlight by percentage from a
+desktop user to call `swaymsg`. `home/local/bin/bl` sets the backlight by percentage from a
 shell.
 
 ---
@@ -332,7 +333,8 @@ systemctl --user mask pipewire pipewire.socket pipewire-pulse \
 
 `plasmalogin.service` stays enabled but never starts, because it is wanted by
 `graphical.target` and the default target is `multi-user.target`. That is how
-`bin/bootmode` can switch back to a desktop without reinstalling anything.
+`home/local/bin/bootmode` could switch back to a desktop without reinstalling
+anything (as long as Plasma is installed).
 
 ---
 
@@ -346,8 +348,9 @@ systemctl --user mask pipewire pipewire.socket pipewire-pulse \
   out, so the idea was never actually tested. Both were deleted on 2026-09-20
   at the owner's request, together with `40-smt-defer` (which had been saving
   ~2.3 s per resume) and `50-resume-cpu-boost`. The `_PTS` brake is therefore
-  accepted, not solved. The scripts are still in this repo's history if anyone
-  wants to revisit it.
+  accepted, not solved. The scripts (and `pci-remove-unused`, `cpu-power`,
+  `powertop-autotune`, which are not enabled either) are kept under `system/`
+  for reference only; the install steps above do not enable them.
 * A DSDT override was considered for the same problem and rejected as too
   risky for the gain.
 
@@ -355,7 +358,7 @@ systemctl --user mask pipewire pipewire.socket pipewire-pulse \
 
 ## 9. Porting to another distribution
 
-Unchanged: everything under `home/`, `src/`, `bin/`, the sway/foot
+Unchanged: everything under `home/`, `src/`, the sway/foot
 configuration, the daemon and its unit, the masking lists, the modprobe
 blacklists, sysctl and udev rules.
 

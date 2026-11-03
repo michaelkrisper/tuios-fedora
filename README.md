@@ -1,7 +1,10 @@
 # tuios-fedora
 
+[![CI](https://github.com/michaelkrisper/tuios-fedora/actions/workflows/ci.yml/badge.svg)](https://github.com/michaelkrisper/tuios-fedora/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A MacBook Pro 11,1 running Fedora that boots straight into a terminal — no
-desktop, no compositor chrome, no session manager. every window gets its
+desktop, no compositor chrome, no session manager. Every window gets its
 own sway workspace, and the workspace buttons in swaybar act as tabs next to
 the status line — terminals are `footclient` windows of a
 single `foot --server`, Chrome sits next to them as just another tab — and two small
@@ -21,12 +24,14 @@ noticeably on a battery this old. What is left boots in about 15 seconds into
 
 | | |
 |---|---|
-| `swaybar-status.c` | the one bar: tabs (one window per workspace, named after its title), Claude context + 5 h limit of the focused tab, CPU, network, battery, clock — dependency-free C |
-| `specialkeysd.c` | brightness, keyboard backlight, idle dimming, and the Exposé/Dashboard keys |
-| `sway.config` | bar with tabs + status, foot server, touchpad |
-| `specialkeysd.service` | runs the daemon as root, because `/dev/input` and backlight need it |
+| `src/swaybar-status.c` | the one bar: tabs (one window per workspace, named after its title), Claude context + 5 h limit of the focused tab, CPU, network, battery, clock — dependency-free C |
+| `src/specialkeysd.c` | brightness, keyboard backlight, idle dimming, and the Exposé/Dashboard keys |
+| `home/config/sway/config` | bar with tabs + status, foot server, touchpad |
+| `home/config/tty-claude.sh` | tty1 autostart: sway, then Claude Code in the first terminal |
+| `system/.../specialkeysd.service` | runs the daemon as root, because `/dev/input` and backlight need it |
+| `home/`, `system/` | every other config the machine runs, mirroring `~` and `/` |
 
-`SETUP.md` documents how to reproduce the whole thing on a fresh Fedora.
+[`SETUP.md`](SETUP.md) documents how to reproduce the whole thing on a fresh Fedora.
 
 ## Build
 
@@ -96,10 +101,28 @@ activity by touching `$XDG_RUNTIME_DIR/specialkeysd-wake`; the daemon only
 looks at the mtime and wakes the screen within five seconds.
 
 Keys must be handled in exactly one place. Binding one of them in the
-compositor as well means two actions per press — the comments in `sway.config`
+compositor as well means two actions per press — the comments in the sway config
 record both times that happened, once for brightness and once for Exposé.
 
 ## Notes
 
-The glyphs (, 󰁹, 󰂄) come from a Nerd Font — the terminal needs one to render
-them. Source comments are in German.
+The glyphs (, 󰁹, 󰂄) come from a Nerd Font — the bar font needs one to render
+them.
+
+## Development
+
+Both programs are dependency-free C and build on Linux with gcc or clang:
+
+```sh
+make CFLAGS='-O2 -Wall -Wextra -Werror'   # what CI builds with (gcc and clang)
+make test                                  # unit tests in tests/
+shellcheck home/local/bin/bl ...           # all shell scripts, see .github/workflows/ci.yml
+```
+
+The tests include the program sources directly, so they can reach the static
+helpers (formatting, the sway JSON parser and tree walk, the brightness step
+table) without changing the programs.
+
+## License
+
+[MIT](LICENSE)

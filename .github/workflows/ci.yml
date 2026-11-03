@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  c:
+    name: C (${{ matrix.cc }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    env:
+      CC: ${{ matrix.cc }}
+      CFLAGS: -O2 -Wall -Wextra -Werror
+    steps:
+      - uses: actions/checkout@v7
+      - run: make all
+      - run: make test
+      - name: Tests with sanitizers
+        run: |
+          make clean
+          make test CFLAGS="$CFLAGS -g -fsanitize=address,undefined -fno-sanitize-recover=all"
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: shellcheck
+        run: |
+          shellcheck --version
+          shellcheck home/bash_profile home/bashrc home/config/tty-claude.sh \
+            home/local/bin/bl home/local/bin/bootmode home/local/bin/google-chrome-stable \
+            home/local/bin/intkbd home/local/bin/kde \
+            system/usr/lib/systemd/system-sleep/* system/usr/local/bin/*.sh
+      - name: Python syntax
+        run: python3 -m py_compile home/local/bin/resume-check
