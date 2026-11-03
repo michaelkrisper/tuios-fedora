@@ -1,6 +1,6 @@
 [Unit]
 Description=WLAN beim Herunterfahren sauber vom AP abmelden
-# Stop laeuft vor dem Stop von NetworkManager
+# Stop runs before NetworkManager is stopped
 After=NetworkManager.service
 Wants=NetworkManager.service
 

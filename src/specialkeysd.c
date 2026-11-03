@@ -1,18 +1,17 @@
-// specialkeysd: bedient die Sondertasten, die im Kiosk sonst niemand mehr
-// abfaengt -- Helligkeit (Display und Tastatur), Exposé/F3 zum Umschalten
-// des sway-Fensters -- und dimmt bei
-// Untaetigkeit ab.
-// Seit 2026-11-01 ohne tmux: F3/F4 gehen per swaymsg an sway, die Fenster
-// liegen dort als Tabs. Ctrl+F3 (Ansichtswechsel) ist entfallen.
-// Unter cage gibt es weder Idle- noch Tastenverwaltung; powerdevil und
-// kglobalaccel haben das frueher gemacht.
+// specialkeysd: handles the special keys nobody else picks up in the kiosk --
+// brightness (display and keyboard), Exposé/F3 to switch the sway window --
+// and dims the screen when idle.
+// Since 2026-11-01 there is no tmux: F3/F4 go to sway via swaymsg, where the
+// windows are tabs. Ctrl+F3 (view switching) is gone.
+// A bare sway session has no idle or special-key handling; powerdevil and
+// kglobalaccel used to do that.
 //
-// Hiess bis 2026-09-06 idle-dim, weil es mit dem Abdimmen angefangen hat --
-// das ist laengst der kleinere Teil.
+// Called idle-dim until 2026-09-06, because dimming is how it started --
+// that has long been the smaller part.
 //
-// build: make specialkeysd && make install-daemon   (siehe README)
-// Laeuft als System-Dienst, weil nur root sowohl /dev/input/* lesen als auch
-// /sys/class/backlight schreiben darf.
+// build: make specialkeysd && make install-daemon   (see README)
+// Runs as a system service, because only root may both read /dev/input/* and
+// write /sys/class/backlight.
 #define _GNU_SOURCE
 #include <dirent.h>
 #include <fcntl.h>
@@ -29,7 +28,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#ifndef BL                       // ueberschreibbar fuer Tests
+#ifndef BL                       // overridable for tests
 #define BL    "/sys/class/backlight/intel_backlight/brightness"
 #endif
 #ifndef BLMAX
@@ -41,32 +40,32 @@
 #ifndef KBMAX
 #define KBMAX "/sys/class/leds/smc::kbd_backlight/max_brightness"
 #endif
-#ifndef KIOSKUSER                // in dessen Namen swaymsg gerufen wird
+#ifndef KIOSKUSER                // user swaymsg is run as
 #define KIOSKUSER "michi"
 #endif
 #ifndef ACPATH
 #define ACPATH "/sys/class/power_supply/ADP1/online"
 #endif
 #define MAXFD 32
-#define RESCAN 5                     // Sekunden: neue Eingabegeraete einsammeln
-#define STEPMS 120                   // Entprellung: Video-Bus *und* Tastatur
-                                     // melden denselben Tastendruck
+#define RESCAN 5                     // seconds: pick up new input devices
+#define STEPMS 120                   // debounce: the video bus *and* the keyboard
+                                     // both report the same key press
 #define WAKE "/run/user/%u/specialkeysd-wake"
-                                     // Wer ohne Eingabegeraet schreibt -- das
-                                     // Diktat von m5assistant tippt per
-                                     // "tmux send-keys" direkt in den Puffer --
-                                     // faesst diese Datei an und gilt damit als
-                                     // Aktivitaet. Im Laufzeitverzeichnis des
-                                     // Kioskusers, damit er ohne Rechte drankommt.
+                                     // Anything that types without an input
+                                     // device -- the m5assistant dictation
+                                     // injects text via a virtual keyboard --
+                                     // touches this file and so counts as
+                                     // activity. Lives in the kiosk user's
+                                     // runtime dir so no privileges are needed.
 
-static int idle_bat = 1800;          // Timeout auf Akku
-static int idle_ac  = 3600;          // Timeout am Netzteil
+static int idle_bat = 1800;          // timeout on battery
+static int idle_ac  = 3600;          // timeout on AC
 
-// Feste Stufen in Promille, unten fein und oben grob: der Wert steuert die
-// PWM-Einschaltdauer, und die Wahrnehmung ist ungefaehr die vierte Wurzel
-// davon -- ein Promille ist im Dunkeln deutlich sichtbar, bei 90 % dagegen
-// nicht mehr. Promille statt Prozent, weil 1 % (13 von 1388 Schritten) nachts
-// noch zu hell ist; das Panel nimmt Rohwerte bis hinunter zu 1.
+// Fixed steps in per mille, fine at the bottom and coarse at the top: the value
+// sets the PWM duty cycle, and perceived brightness is roughly its fourth root
+// -- one per mille is clearly visible in the dark, at 90 % it is not.
+// Per mille rather than percent because 1 % (13 of 1388 steps) is still too
+// bright at night; the panel accepts raw values down to 1.
 static const int disp_steps[] = {0,2,5,10,20,50,100,200,300,400,
                                  500,600,700,800,900,1000};
 static const int kbd_steps[]  = {0,10,100,500,1000};
@@ -75,20 +74,20 @@ struct dimmer {
     const char *path;
     const int  *steps;
     int         nsteps;
-    long        max;             // <= 0: Geraet nicht vorhanden
+    long        max;             // <= 0: device not present
     long        laststep;
 };
 
-// Wem sway gehoert; root darf dessen Socket nicht einfach benutzen.
+// Who owns sway; root cannot simply use that user's socket.
 static uid_t u_uid; static gid_t u_gid; static char *u_name, *u_home;
 
-// F3 schaltet weiter (wie Alt-Tab), F4 macht ein Terminal auf.
-// Der Socket-Name enthaelt die PID von sway, darum per glob suchen; ohne
-// laufendes sway passiert nichts.
+// F3 switches to the next tab (like Alt-Tab), F4 opens a terminal.
+// The socket name contains sway's PID, hence the glob; without a running sway
+// nothing happens.
 static void sway_do(const char *cmd) {
     if (!u_home) return;
     pid_t p = fork();
-    if (p != 0) return;                      // nicht warten, SIGCHLD ist ignoriert
+    if (p != 0) return;                      // don't wait, SIGCHLD is ignored
     if (initgroups(u_name, u_gid) || setgid(u_gid) || setuid(u_uid)) _exit(127);
     char pat[64]; glob_t g;
     snprintf(pat, sizeof pat, "/run/user/%u/sway-ipc.*.sock", (unsigned)u_uid);
@@ -125,21 +124,20 @@ static long wake_stamp(const char *p) {
     return stat(p, &st) == 0 ? (long)st.st_mtime : 0;
 }
 
-// Promille-Stufe -> Rohwert des Geraets
+// per-mille step -> raw device value
 static long raw_of(const struct dimmer *d, int permille) {
     return (permille * d->max + 500) / 1000;
 }
 
-// eine Stufe hoch oder runter
+// one step up or down
 static void step(struct dimmer *d, int dir) {
     if (d->max <= 0) return;
     long t = nowms();
     if (t - d->laststep < STEPMS) return;
     d->laststep = t;
     long cur = rd(d->path); if (cur < 0) cur = 0;
-    // Im Rohwert vergleichen, nicht in Promille: bei der Ruecktransformation
-    // fallen mehrere Stufen auf denselben gerundeten Promillewert, und ein
-    // Druck haette dann keine Wirkung mehr.
+    // Compare raw values, not per mille: converting back maps several steps to
+    // the same rounded per-mille value, and a key press would then do nothing.
     long want = cur;
     if (dir > 0) {
         for (int k = 0; k < d->nsteps; k++)
@@ -151,8 +149,8 @@ static void step(struct dimmer *d, int dir) {
     wr(d->path, want);
 }
 
-// alle Eingabegeraete offen halten; Bluetooth-Tastaturen wechseln beim
-// Wiederverbinden die event-Nummer, deshalb regelmaessig neu einsammeln
+// keep all input devices open; Bluetooth keyboards get a new event number
+// when they reconnect, so rescan regularly
 static int scan(struct pollfd *fds, char names[][64], int have) {
     DIR *d = opendir("/dev/input");
     if (!d) return have;
@@ -186,7 +184,7 @@ int main(int argc, char **argv) {
                            (int)(sizeof kbd_steps / sizeof *kbd_steps),
                            rd(KBMAX), 0 };
 
-    signal(SIGCHLD, SIG_IGN);                // keine Zombies einsammeln muessen
+    signal(SIGCHLD, SIG_IGN);                // no zombies to reap
     struct passwd *pw = getpwnam(KIOSKUSER);
     if (pw) {
         u_uid = pw->pw_uid; u_gid = pw->pw_gid;
@@ -230,24 +228,24 @@ int main(int argc, char **argv) {
                         }
                     }
                 }
-                // Ein abgemeldetes Geraet (Bluetooth weg, USB gezogen) meldet
-                // von da an dauerhaft POLLERR/POLLHUP; ohne Aufraeumen kehrt
-                // poll() sofort zurueck und die Schleife frisst einen Kern.
+                // A device that went away (Bluetooth gone, USB unplugged)
+                // reports POLLERR/POLLHUP forever; without cleanup poll()
+                // returns immediately and the loop eats a whole core.
                 if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
                     close(fds[i].fd);
                     fds[i] = fds[have - 1];
                     memcpy(names[i], names[have - 1], sizeof names[i]);
-                    have--; i--;                 // Nachruecker im selben Durchlauf
+                    have--; i--;                 // handle the moved-in entry in this pass
                 }
             }
-            // nur echte Eingaben zaehlen als Aktivitaet, sonst haelt ein
-            // sterbendes Geraet den Bildschirm dauerhaft wach
+            // only real input counts as activity, otherwise a dying device
+            // keeps the screen awake forever
             if (!got) goto idle_check;
 
             last = now;
 
-            // Aufwecken zaehlt nicht als Helligkeitswunsch, sonst verpufft
-            // der erste Tastendruck nach einer Pause
+            // waking up does not count as a brightness request, otherwise the
+            // first key press after a pause would change the brightness
             if (dimmed) {
                 if (saved   > 0) wr(BL, saved);
                 if (savedkb > 0) wr(KB, savedkb);
@@ -292,7 +290,7 @@ idle_check:
             int ac = rd(ACPATH) == 1;
             if (now - last >= (ac ? idle_ac : idle_bat)) {
                 saved = rd(BL); savedkb = rd(KB);
-                // 0 % kann jetzt gewollt sein -- dann bleibt es aus
+                // 0 % may be intentional -- then it stays off
                 if (saved > 0 || savedkb > 0) {
                     if (saved   > 0) wr(BL, 0);
                     if (savedkb > 0) wr(KB, 0);

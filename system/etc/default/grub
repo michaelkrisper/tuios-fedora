@@ -1,6 +1,6 @@
 GRUB_TIMEOUT=0
-# hidden statt 0-ohne-Menue: Esc oder Shift beim Booten holt das Menue
-# trotzdem hervor -- noetig, um auf 7.1.9 (mit acpi_osi=!Darwin) zurueckzukommen.
+# hidden instead of no menu at all: Esc or Shift during boot still brings up
+# the menu -- needed to get back to 7.1.9 (with acpi_osi=!Darwin).
 GRUB_TIMEOUT_STYLE=hidden
 GRUB_DISTRIBUTOR="$(sed 's, release .*$,,g' /etc/system-release)"
 GRUB_DEFAULT=saved

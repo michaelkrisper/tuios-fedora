@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
-# SMT ueber den Suspend hinweg abschalten.
+# Turn SMT off across suspend.
 #
-# cpu2 und cpu3 sind die HyperThreading-Zwillinge von cpu0 und cpu1. Sie im
-# Resume-Pfad hochzufahren kostet ~2,3 s: der Kernel macht das synchron in
-# suspend_enable_secondary_cpus(), bevor er weitermacht, und die einzelnen
-# cpuhp-Callbacks (cacheinfo_cpu_online, sched_cpu_activate, ...) warten dort
-# jeweils hunderte Millisekunden -- vermutlich auf RCU-Grace-Periods, solange
-# kaum CPUs online sind.
+# cpu2 and cpu3 are the HyperThreading siblings of cpu0 and cpu1. Bringing them
+# up in the resume path costs ~2.3 s: the kernel does it synchronously in
+# suspend_enable_secondary_cpus() before continuing, and the individual cpuhp
+# callbacks (cacheinfo_cpu_online, sched_cpu_activate, ...) each wait hundreds
+# of milliseconds there -- presumably for RCU grace periods while hardly any
+# CPUs are online.
 #
-# Im laufenden System kostet derselbe Vorgang fast nichts: aus 131 ms, an 51 ms
-# (gemessen 2026-08-31). Also vorher aus, nachher im Hintergrund wieder an --
-# statt SMT per nosmt dauerhaft zu opfern.
+# On a running system the same operation costs almost nothing: off 131 ms,
+# on 51 ms (measured 2026-08-31). So off before, back on in the background
+# afterwards -- instead of sacrificing SMT permanently with nosmt.
 case "$1" in
     pre)
         echo off > /sys/devices/system/cpu/smt/control
         ;;
     post)
-        # via systemd-run, damit der Resume nicht darauf wartet und der Prozess
-        # nicht mit systemd-suspend.service abgeraeumt wird.
+        # via systemd-run, so resume does not wait for it and the process is not
+        # cleaned up together with systemd-suspend.service.
+        # shellcheck disable=SC2016  # expanded by the inner sh
         systemd-run --quiet --collect \
             --unit=smt-restore \
             --description="HyperThreading nach Resume wieder aktivieren" \

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Wertet den letzten Suspend/Resume-Zyklus aus dem Journal aus.
+"""Analyse the last suspend/resume cycle from the journal.
 
-Rechnet konsequent in monotoner Zeit -- die Realtime-Uhr ist ueber einen
-Suspend hinweg nicht zu gebrauchen (chronyd korrigiert beim Resume, die RTC
-des MacBook laeuft daneben).
+Works strictly in monotonic time -- the realtime clock is useless across a
+suspend (chronyd corrects it on resume, and the MacBook's RTC drifts).
 """
 import json
 import re
@@ -26,8 +25,8 @@ def journal(*args):
         msg = d.get("MESSAGE", "")
         if not isinstance(msg, str):
             continue
-        # _SOURCE_MONOTONIC_TIMESTAMP ist die Uhr des Kernels selbst,
-        # __MONOTONIC_TIMESTAMP die von journald beim Einlesen.
+        # _SOURCE_MONOTONIC_TIMESTAMP is the kernel's own clock,
+        # __MONOTONIC_TIMESTAMP the one journald took when reading it.
         src = d.get("_SOURCE_MONOTONIC_TIMESTAMP")
         mon = d.get("__MONOTONIC_TIMESTAMP")
         yield {
@@ -53,8 +52,8 @@ if entries:
     print(f"Zyklus: {t0 - entries[-1]['mon']:.1f} s zwischen 'suspend entry' und "
           f"'suspend exit' (enthaelt die Schlafzeit)\n")
 
-# Was der Kernel selbst gemessen hat -- diese Zahlen sind belastbar,
-# anders als Differenzen von Zeitstempeln ueber die Schlafluecke hinweg.
+# What the kernel measured itself -- these numbers are reliable, unlike
+# differences of timestamps across the sleep gap.
 print("--- Kernel, selbst gemessen ---")
 window = [e for e in events if entries and entries[-1]["mon"] <= e["mon"] <= t0 + 1]
 for pat in (r"suspend devices took", r"resume devices took", r"Filesystems sync"):
@@ -62,7 +61,7 @@ for pat in (r"suspend devices took", r"resume devices took", r"Filesystems sync"
         if re.search(pat, e["msg"]):
             print(f"  {e['msg']}")
 
-# Pro-Geraet-Zeiten, falls /sys/power/pm_print_times aktiv war
+# Per-device times, if /sys/power/pm_print_times was enabled
 slow = []
 for e in window:
     m = re.search(r"(\S+): PM: (\S+) returned 0 after (\d+) usecs", e["msg"])
@@ -75,7 +74,7 @@ if slow:
 else:
     print("\n  (keine Pro-Geraet-Zeiten -- 'echo 1 | sudo tee /sys/power/pm_print_times')")
 
-# Userspace nach dem Resume
+# Userspace after resume
 print("\n--- Nach dem Resume ---")
 interesting = re.compile(
     r"state change:|auto-activating|Trying to associate|Associated with|"

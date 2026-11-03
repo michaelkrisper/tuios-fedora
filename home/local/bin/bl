@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# bl [0-100] - Displayhelligkeit in Prozent, Nachkommastellen erlaubt (bl 0.2)
+# bl [0-100] - display brightness in percent, decimals allowed (bl 0.2)
 #
-# Geraetename nicht mehr fest verdrahtet: mit _OSI(Darwin) heisst das Backlight
-# acpi_video0 (100 Stufen), ohne Darwin intel_backlight (1388 Stufen). Ueber
-# brightnessctl ist es egal, welches da ist -- und es braucht kein sudo, weil
-# brightnessctl den Zugriff ueber logind/udev macht.
+# The device name is not hard-wired: with _OSI(Darwin) the backlight is
+# acpi_video0 (100 steps), without Darwin intel_backlight (1388 steps).
+# brightnessctl does not care which one exists -- and needs no sudo, because
+# it gets access via logind/udev.
 #
-# Prozent werden hier selbst in Rohwerte umgerechnet: brightnessctl schneidet
-# bei "0.2%" die Nachkommastellen ab, und unter 1 % liegt bei 1388 Stufen noch
-# reichlich nutzbarer Bereich (Rohwert 1 funktioniert).
+# Percent is converted to raw values here: brightnessctl truncates the decimals
+# of "0.2%", and with 1388 steps there is plenty of usable range below 1 %
+# (raw value 1 works).
 set -u
 read -r _ _ cur _ max < <(brightnessctl -m | tr ',' ' ')
 show() { awk -v c="$1" -v m="$2" 'BEGIN{printf "%.1f%%\n", c*100/m}'; }
@@ -18,7 +18,7 @@ else
     raw=$(awk -v p="$1" -v m="$max" 'BEGIN{
         v = int(p*m/100 + 0.5)
         if (v < 0) v = 0; if (v > m) v = m
-        if (v == 0 && p > 0) v = 1        # gewollt dunkel, aber nicht aus
+        if (v == 0 && p > 0) v = 1        # deliberately dark, but not off
         print v }')
     brightnessctl -q set "$raw"
     show "$raw" "$max"

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Fedoras /usr/bin/google-chrome-stable ignoriert ~/.config/chrome-flags.conf
-# (das liest nur der Arch-Wrapper). Hier nachgeruestet: eine Flag pro Zeile, # = Kommentar.
+# Fedora's /usr/bin/google-chrome-stable ignores ~/.config/chrome-flags.conf
+# (only the Arch wrapper reads it). Added here: one flag per line, # = comment.
 conf="${XDG_CONFIG_HOME:-$HOME/.config}/chrome-flags.conf"
 flags=
 [ -r "$conf" ] && flags=$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$conf")
-# shellcheck disable=SC2086  # Flags sollen an Leerraum zerfallen
+# shellcheck disable=SC2086  # flags are meant to split on whitespace
 exec /opt/google/chrome/google-chrome $flags "$@"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bootmode [tty|kde|status] - schaltet das Standard-Boot-Ziel um
+# bootmode [tty|kde|status] - switch the default boot target
 case "${1:-status}" in
   tty) sudo systemctl set-default multi-user.target ;;
   kde) sudo systemctl set-default graphical.target ;;

@@ -1,39 +1,39 @@
 
-// swaybar-status: die eine Leiste des Kiosks -- links die Tabs, rechts
-// Claude (Kontext des aktiven Tabs, 5-h-Limit), CPU, Netz, Akku, Uhr.
-// Ausgabe ist Pango-Markup (bar { pango_markup enabled }). Hiess bis
-// 2026-11-01 tmux-status.
-// build: make && make install   (siehe README)
+// swaybar-status: the kiosk's single bar -- tabs on the left; on the right
+// Claude (context of the focused tab, 5 h limit), CPU, network, battery, clock.
+// Output is Pango markup (bar { pango_markup enabled }). Called tmux-status
+// until 2026-11-01.
+// build: make && make install   (see README)
 //
-// Tabs: jedes Fenster bekommt einen eigenen Workspace "N:Titel", die
-// Workspace-Buttons der Bar (strip_workspace_numbers) sind damit die Tabs.
-// Im --loop-Modus haengt das Programm darum zusaetzlich am sway-IPC: neues
-// Fenster auf belegtem Workspace -> eigener Workspace dahinter; Titel ->
-// Workspace-Name; letztes Fenster zu -> voriger Tab. sways eigene Tableiste
-// taugt nicht, sie ist eine zweite Leiste ohne Platz fuer den Status.
+// Tabs: every window gets its own workspace "N:title", so the bar's workspace
+// buttons (strip_workspace_numbers) are the tabs. In --loop mode the program
+// therefore also talks sway IPC: new window on an occupied workspace -> its own
+// workspace behind the last one; window title -> workspace name; last window
+// closed -> previous tab. sway's own tab bar is no use: it is a second bar with
+// no room for the status.
 //
-// Claude: `statusline --bar` (Repo claude-statusline) schreibt pro Session
-// $XDG_RUNTIME_DIR/claude-bar/<Pfad, / als %> und dort "limits"; der
-// Fenstertitel ist derselbe Pfad. inotify auf das Verzeichnis zeigt
-// Aenderungen sofort statt erst zum naechsten Tick.
+// Claude: `statusline --bar` (repo claude-statusline) writes one file per
+// session to $XDG_RUNTIME_DIR/claude-bar/<path, / as %>, plus "limits"; the
+// window title is the same path. inotify on that directory shows changes
+// immediately instead of on the next tick.
 //
-// Zwei Betriebsarten:
-//   ohne Argument : einmal ausgeben, CPU-Delta ueber eine Cache-Datei (zum Testen)
-//   --loop [sek]  : dauerhaft laufen und alle [sek] Sekunden eine Zeile schreiben
+// Two modes:
+//   no argument  : print once, CPU delta via a cache file (for testing)
+//   --loop [sec] : keep running and write a line every [sec] seconds
 //
-// --loop ist der Normalfall: swaybar startet status_command einmal und liest
-// laufend Zeilen mit -- damit entfaellt fork/exec pro Tick, das mit ~1 ms der
-// mit Abstand groesste Posten war. Der CPU-Zaehlerstand
-// bleibt dann einfach im Speicher, die Cache-Datei braucht es nicht mehr.
-// Beendet sich von selbst per SIGPIPE, sobald swaybar die Leseseite schliesst.
+// --loop is the normal case: swaybar starts status_command once and keeps
+// reading lines -- this saves a fork/exec per tick, which at ~1 ms was by far
+// the largest cost. The CPU counters simply stay in memory, no cache file
+// needed. Exits by itself via SIGPIPE as soon as swaybar closes the read end.
 //
-// Bewusst ohne stdio-Streams: printf/fopen ziehen Puffer-Allokation und
-// stdio-Init nach sich (snprintf fuer die sway-Befehle ist harmlos). Alles laeuft ueber open/read/write und einen eigenen Zahlenformatierer.
+// Deliberately no stdio streams: printf/fopen pull in buffer allocation and
+// stdio init (snprintf for the sway commands is harmless). Everything goes
+// through open/read/write and a hand-written number formatter.
 #define _GNU_SOURCE
 #include <fcntl.h>
 #include <poll.h>
 #include <stdint.h>
-#include <stdio.h>                  // nur snprintf, kein FILE-Puffer
+#include <stdio.h>                  // snprintf only, no FILE buffer
 #include <string.h>
 #include <stdlib.h>
 #include <sys/inotify.h>
@@ -43,7 +43,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#ifndef BATDIR                      // ueberschreibbar fuer Tests
+#ifndef BATDIR                      // overridable for tests
 #define BATDIR "/sys/class/power_supply/BAT0/"
 #endif
 
@@ -63,9 +63,9 @@ static void putnum(long v, int pad) {
     while (i-- > 0 && olen < (int)sizeof out - 1) out[olen++] = tmp[i];
 }
 
-// Feste Feldbreite, damit die Leiste nicht springt. Aufgefuellt wird VOR dem
-// Symbol: die Zahl bleibt am Symbol kleben, die rechte Kante jedes Feldes und
-// damit die Gesamtlaenge stehen still.
+// Fixed field width so the bar does not jump. Padding goes BEFORE the symbol:
+// the number sticks to its symbol, while the right edge of every field, and
+// thus the total length, stays put.
 static int digits(long v) {
     int d = 1;
     while (v >= 10) { v /= 10; d++; }
@@ -91,7 +91,7 @@ static long num(const char *path) {
     return slurp(path, b, sizeof b) ? strtol(b, NULL, 10) : -1;
 }
 
-// naechste vorzeichenlose Zahl ab *p, Zeiger wird weitergeschoben
+// next unsigned number at or after *p; advances the pointer
 static unsigned long nextul(const char **p) {
     while (**p && (**p < '0' || **p > '9')) (*p)++;
     unsigned long v = 0;
@@ -103,15 +103,15 @@ static void cpu_totals(unsigned long *busy, unsigned long *idle) {
     char b[256];
     *busy = *idle = 0;
     if (!slurp("/proc/stat", b, sizeof b)) return;
-    const char *p = b + 3;                                  // "cpu" ueberspringen
+    const char *p = b + 3;                                  // skip "cpu"
     unsigned long u = nextul(&p), ni = nextul(&p), sy = nextul(&p);
     unsigned long id = nextul(&p), io = nextul(&p);
-    *idle = id + io;                                        // iowait zaehlt als nicht-arbeitend
+    *idle = id + io;                                        // iowait counts as not busy
     *busy = u + ni + sy;
 }
 
-// Virtuelle Interfaces zaehlen den Verkehr der echten NIC ein zweites Mal
-// mit -- Bruecken, veth-Paare und Loopback fliegen darum raus.
+// Virtual interfaces count the real NIC's traffic a second time -- so bridges,
+// veth pairs and loopback are skipped.
 static int skip_if(const char *n, int len) {
     static const char *const pre[] = { "lo", "veth", "docker", "podman", "br-",
                                        "virbr", "cni", "tun", "tap", "vnet", 0 };
@@ -141,25 +141,25 @@ static void net_totals(unsigned long *rx, unsigned long *tx) {
     }
 }
 
-// Bytes/s aus zwei Zaehlerstaenden, -1 wenn noch kein Delta vorliegt
+// bytes/s from two counter readings, -1 if there is no delta yet
 static long rate(unsigned long now, unsigned long prev, long secs) {
     if (secs <= 0 || now < prev) return -1;             // Reset/Overflow
     return (long)((now - prev) / (unsigned long)secs);
 }
 
-// Rate in Mbit/s mit einer Nachkommastelle, ohne Einheit: "0.0", "33.2".
-// Die Einheit steht nirgends -- in der eigenen Leiste ist sie bekannt.
-// Alles unter 0,1 Mbit ist Hintergrundrauschen und wird zu 0.0 --
-// feiner aufzuloesen bringt nichts. Gedeckelt bei 99.9, damit das Feld
-// hoechstens zweistellig wird (die Leitung schafft ohnehin ~50).
-// Mbit ist dezimal (1e6 bit), wie bei Leitungsangaben ueblich:
-// Bytes/s * 8 / 1e6, in Zehnteln also Bytes/s / 12500.
+// Rate in Mbit/s with one decimal, without unit: "0.0", "33.2".
+// The unit is not shown anywhere -- in your own bar you know it.
+// Anything below 0.1 Mbit is background noise and becomes 0.0 -- finer
+// resolution is pointless. Capped at 99.9 so the integer part has at most two
+// digits (the line does ~50 anyway).
+// Mbit is decimal (1e6 bit), as usual for link speeds:
+// bytes/s * 8 / 1e6, i.e. in tenths bytes/s / 12500.
 static long tenths(long bps) {
     long t = bps / 12500;
     return t > 999 ? 999 : t;
 }
 
-// Breite des Ganzzahlteils, damit der Aufrufer vor dem Pfeil auffuellen kann
+// width of the integer part, so the caller can pad before the arrow
 static int ratewidth(long bps) {
     return bps < 0 ? 2 : digits(tenths(bps) / 10);
 }
@@ -170,23 +170,22 @@ static void putrate(long bps) {
     putnum(t / 10, 0); put("."); putnum(t % 10, 0);
 }
 
-// Prozent aus zwei Zaehlerstaenden, -1 wenn kein brauchbares Delta vorliegt
+// percent from two counter readings, -1 if there is no usable delta
 static long cpu_pct(unsigned long busy, unsigned long idle,
                     unsigned long pbusy, unsigned long pidle) {
     long dt = (long)((busy + idle) - (pbusy + pidle));
     long di = (long)(idle - pidle);
     if (dt <= 0) return -1;
     if (di < 0) di = 0;
-    if (di > dt) di = dt;                                   // gegen Zaehler-Resets
+    if (di > dt) di = dt;                                   // guard against counter resets
     return 100 - di * 100 / dt;
 }
 
-// Restzeit aus einem gewichteten Mittel der letzten 12 Leistungswerte
-// (12 x 5 s = eine Minute). Neuere Samples zaehlen mehr (Gewicht rank^1.2),
-// so folgt die Anzeige Lastwechseln, ohne bei jedem Tick zu springen.
-// Gleicher Algorithmus wie im powermeter-Plasmoid. Beim Wechsel Laden/
-// Entladen wird die Historie verworfen. Gewichte vorberechnet (x1000),
-// damit kein pow() und keine libm noetig ist.
+// Remaining time from a weighted average of the last 12 power samples
+// (12 x 5 s = one minute). Newer samples weigh more (weight rank^1.2), so the
+// display follows load changes without jumping every tick. Same algorithm as
+// the powermeter plasmoid. Switching between charging and discharging drops
+// the history. Weights are precomputed (x1000) so no pow() or libm is needed.
 #define HIST 12
 static const long weight[HIST] = { 1000, 2297, 3737, 5278, 6899, 8586,
                                    10330, 12126, 13967, 15849, 17769, 19725 };
@@ -199,18 +198,18 @@ static long smooth_power(long pw, int dis) {
     if (histn == HIST) { memmove(hist, hist + 1, sizeof hist - sizeof *hist); histn--; }
     hist[histn++] = pw;
     long num = 0, den = 0;
-    for (int i = 0; i < histn; i++) {              // i=0 aeltestes ... neuestes am schwersten
+    for (int i = 0; i < histn; i++) {              // i=0 oldest ... newest weighs most
         num += hist[i] * weight[i]; den += weight[i];
     }
     return num / den;
 }
 
-// Mit _OSI(Darwin) bindet Linux den SBS-Treiber statt der generischen
-// ACPI-Batterie. Der liefert charge_*/current_* in uAh/uA statt
-// energy_*/power_* in uWh/uW. Fehlt die Energie-Variante, wird sie ueber
-// voltage_now umgerechnet, damit die Leiste in beiden Faellen Watt zeigt.
-// (Die Restzeit wird dadurch minimal ungenau, weil voltage_now mit dem
-// Ladestand faellt -- fuer eine auf 5 min gerundete Anzeige belanglos.)
+// With _OSI(Darwin) Linux binds the SBS driver instead of the generic ACPI
+// battery. It reports charge_*/current_* in uAh/uA instead of energy_*/power_*
+// in uWh/uW. If the energy variant is missing it is converted via voltage_now,
+// so the bar shows watts either way. (This makes the remaining time slightly
+// inaccurate because voltage_now drops with the charge level -- irrelevant
+// for a display rounded to 5 min.)
 static long as_uW(const char *energy, const char *charge) {
     long v = num(energy);
     if (v >= 0) return v;
@@ -219,7 +218,7 @@ static long as_uW(const char *energy, const char *charge) {
     return c * (u / 1000) / 1000;
 }
 
-// Farbwechsel als Pango-Span; NULL = zurueck zur Vordergrundfarbe der Leiste.
+// Colour change as a Pango span; NULL = back to the bar's foreground colour.
 static int inspan;
 static void col(const char *span) {
     if (inspan) put("</span>");
@@ -231,7 +230,7 @@ static void col(const char *span) {
 // ---------------------------------------------------------------- Claude
 
 static char rtdir[256];             // $XDG_RUNTIME_DIR/claude-bar
-static char focus_key[512];         // Pfad aus dem Titel des aktiven Fensters
+static char focus_key[512];         // path from the focused window's title
 
 static void put_file(const char *name, long maxage) {
     char path[1024], b[600];
@@ -250,7 +249,7 @@ static void put_file(const char *name, long maxage) {
 static void render(long cpu, long rxr, long txr) {
     olen = 0; inspan = 0;
     if (focus_key[0]) put_file(focus_key, 0);
-    put_file("limits", 5 * 3600);           // aelter als ein 5-h-Fenster: ungueltig
+    put_file("limits", 5 * 3600);           // older than one 5 h window: stale
     pad(cpu < 0 ? 1 : 3 - digits(cpu));
     col(cpu >= 70 ? FG("#f38ba8") : FG("#89b4fa"));
     put("");
@@ -266,28 +265,27 @@ static void render(long cpu, long rxr, long txr) {
         int dis = strncmp(st, "Discharging", 11) == 0;
         long pw = as_uW(BATDIR "power_now",   BATDIR "current_now");
         long en = as_uW(BATDIR "energy_now",  BATDIR "charge_now");
-        // energy_full aendert sich praktisch nie -> nur einmal lesen
+        // energy_full practically never changes -> read it once
         static long ef = -1;
         if (ef < 0) ef = as_uW(BATDIR "energy_full", BATDIR "charge_full");
         long rest = dis ? en : ef - en;
         long avg = smooth_power(pw, dis);
 
         padnum(cap, 3);
-        int crit = dis && cap < 15;             // roter Hintergrund bis Zeilenende
+        int crit = dis && cap < 15;             // red background up to the end of the line
         col(crit ? "<span foreground='#1e1e2e' background='#f38ba8'>"
                  : dis && cap <= 30 ? FG("#fab387") : FG("#a6e3a1"));
         put(dis ? "󰁹" : "󰂄");
         putnum(cap, 0); put("%");
-        // Restzeit auf 5 min gerundet, damit die Anzeige nicht bei jedem
-        // Tick zuckt. Fehlt ein Wert, entfaellt das Feld ganz -- die Leiste
-        // ist ohnehin nicht mehr auf feste Spalten ausgelegt.
+        // Remaining time rounded to 5 min so the display does not twitch
+        // every tick. If a value is missing the field is left blank.
         if (avg > 0 && rest > 0) {
             long m = (rest * 60 / avg + 2) / 5 * 5;
             put(" "); putnum(m / 60, 0); put(":"); putnum(m % 60, 2); put("h");
         } else {
-            pad(6);                                 // Feld bleibt reserviert
+            pad(6);                                 // keep the field's width reserved
         }
-        // Leistung " NNW" = 4 Zeichen, gerundet statt abgeschnitten
+        // power " NNW" = 4 characters, rounded rather than truncated
         if (pw > 0) {
             long w = (pw + 500000) / 1000000;
             put(" "); padnum(w, 2); putnum(w, 0); put("W");
@@ -302,8 +300,8 @@ static void render(long cpu, long rxr, long txr) {
     put(":"); putnum(tm.tm_min, 2); put(" ");
 }
 
-// Nur schreiben, wenn sich die Zeile geaendert hat -- bleibt alles gleich,
-// zeichnet swaybar nicht und sway komponiert nicht.
+// Only write when the line changed -- if nothing changed, swaybar does not
+// redraw and sway does not composite.
 static char prev[sizeof out];
 static int prevlen = -1;
 
@@ -315,9 +313,9 @@ static int emit(int nl) {
 }
 
 // ---------------------------------------------------------------- JSON
-// Minimaler Parser fuer die sway-Antworten: Werte landen in einem flachen
-// Array, Kinder sind ueber kid/next verkettet, Strings werden im Puffer selbst
-// entschluesselt (kuerzer wird es dabei nie).
+// Minimal parser for sway's replies: values go into a flat array, children
+// are linked via kid/next, strings are unescaped in place in the buffer (the
+// result is never longer than the input).
 
 typedef struct { char t; const char *k, *s; double n; int kid, next; } J;
 static J *jv; static int jn, jcap;
@@ -473,9 +471,9 @@ static char *ipc_call(int fd, uint32_t type, const char *msg) {
 
 #define MAXWS 64
 #define MAXLEAF 64
-#define MAXLEN 28                   // Tab-Beschriftung, siehe label()
+#define MAXLEN 28                   // tab label, see label()
 
-// Tiling-Fenster eines Teilbaums, zuletzt fokussiertes zuerst
+// tiling windows of a subtree, most recently focused first
 static void leaves(int node, int *out, int *n) {
     int nodes = jget(node, "nodes"), focus = jget(node, "focus");
     if (nodes < 0 || jv[nodes].kid < 0) {
@@ -521,10 +519,11 @@ static int workspaces(int root, int *ws) {
     return n;
 }
 
-// " und \ kommen nicht in Namen: sways Parser laesst \" stehen statt es
-// aufzuloesen. Gekuerzt wird vorne -- bei Pfaden zaehlt das Ende.
-// "<pfad>: <befehl/titel>" -> "<letztes pfadstueck>: <befehl/titel>", hinten
-// gekuerzt; ein reiner Pfad wird vorne gekuerzt, dort steht das Wichtige.
+// " and \ must not end up in names: sway's parser keeps \" literally instead
+// of unescaping it.
+// "<path>: <command/title>" -> "<last path component>: <command/title>",
+// truncated at the end; a bare path is truncated at the front, because the
+// end of a path is what matters.
 static void label(char *dst, size_t cap, const char *t) {
     if (!t) t = "?";
     char tmp[512];
@@ -565,7 +564,7 @@ static void cmd_add(const char *s) {
     }
 }
 
-// change: "new"/"close"/... aus dem Fenster-Event, NULL beim Start
+// change: "new"/"close"/... from the window event, NULL at startup
 static void tidy(int fd, const char *change, double con, int start) {
     char *tree = ipc_call(fd, 4, "");
     if (!tree) return;
@@ -616,7 +615,7 @@ static void tidy(int fd, const char *change, double con, int start) {
     int f = focused_node(root);
     const char *ft = f >= 0 && jget(f, "pid") >= 0 ? jsget(f, "name") : NULL;
     snprintf(focus_key, sizeof focus_key, "%s", ft ? ft : "");
-    char *sep = strstr(focus_key, ": ");               // "<pfad>: <befehl/titel>"
+    char *sep = strstr(focus_key, ": ");               // "<path>: <command/title>"
     if (sep) *sep = 0;
     if (cmdlen) free(ipc_call(fd, 0, cmdbuf));
     free(tree);
@@ -626,8 +625,8 @@ int main(int argc, char **argv) {
     unsigned long busy, idle, pbusy, pidle, rx, tx, prx, ptx;
 
     if (argc > 1 && strcmp(argv[1], "--loop") == 0) {
-        // Intervall in Sekunden, Default 5. Seltener heisst: swaybar zeichnet
-        // seltener, sway komponiert seltener, das Panel darf laenger stehen.
+        // Interval in seconds, default 5. Less often means: swaybar redraws
+        // less often, sway composites less often, the panel may idle longer.
         long secs = argc > 2 ? atol(argv[2]) : 5;
         if (secs < 1) secs = 1;
         const char *rt = getenv("XDG_RUNTIME_DIR");
@@ -638,8 +637,8 @@ int main(int argc, char **argv) {
             ino = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
             if (ino >= 0) inotify_add_watch(ino, rtdir, IN_MOVED_TO | IN_CLOSE_WRITE);
         }
-        // zwei Verbindungen: eine abonniert Events, die andere schickt Befehle --
-        // sonst mischen sich Antworten und Events im selben Strom
+        // two connections: one subscribes to events, the other sends commands --
+        // otherwise replies and events get mixed up in the same stream
         int cmd = ipc_open(), ev = cmd >= 0 ? ipc_open() : -1;
         if (ev >= 0) {
             free(ipc_call(ev, 2, "[\"window\",\"workspace\"]"));
@@ -652,7 +651,7 @@ int main(int argc, char **argv) {
         net_totals(&prx, &ptx);
         for (long cpu = -1, rxr = -1, txr = -1;; ) {
             render(cpu, rxr, txr);
-            if (emit(1)) return 1;                          // swaybar weg -> Schluss
+            if (emit(1)) return 1;                          // swaybar gone -> done
             struct timespec now;
             clock_gettime(CLOCK_MONOTONIC, &now);
             long ms = (next.tv_sec - now.tv_sec) * 1000 + (next.tv_nsec - now.tv_nsec) / 1000000;
@@ -677,7 +676,7 @@ int main(int argc, char **argv) {
                             (!strcmp(change, "init") || !strcmp(change, "empty"))))
                             tidy(cmd, change, con, 0);
                     }
-                    continue;                               // neu zeichnen, Tick bleibt
+                    continue;                               // redraw, keep the tick schedule
                 }
             }
             next.tv_sec += secs;
@@ -690,9 +689,9 @@ int main(int argc, char **argv) {
         }
     }
 
-    // Einmal-Modus: Zaehlerstaende liegen in einer Cache-Datei. Fuer die
-    // Netzrate braucht es zusaetzlich die verstrichene Zeit -- CPU rechnet
-    // mit Ticks und kommt ohne aus, Bytes/s nicht.
+    // One-shot mode: counters are kept in a cache file. The network rate also
+    // needs the elapsed time -- CPU works in ticks and does without, bytes/s
+    // does not.
     cpu_totals(&busy, &idle);
     net_totals(&rx, &tx);
     struct timespec now;
@@ -711,7 +710,7 @@ int main(int argc, char **argv) {
         cpu = cpu_pct(busy, idle, pbusy, pidle);
         prx = nextul(&p); ptx = nextul(&p);
         long secs = now.tv_sec - (long)nextul(&p);
-        if (secs > 0 && secs <= 300) {                      // alter Stand -> lieber "--"
+        if (secs > 0 && secs <= 300) {                      // stale reading -> rather show "--"
             rxr = rate(rx, prx, secs); txr = rate(tx, ptx, secs);
         }
     }

@@ -1,9 +1,9 @@
-# Apple internal SD card reader — vollstaendig deaktiviert (wird nicht genutzt).
-# Zwei Produkt-IDs: 8403 am USB-2-Bus, 8406 am SuperSpeed-Bus. Urspruenglich
-# stand hier nur 8403, deshalb blieb der Leser aktiv und kostete beim Resume
-# 2,66 s (usb 2-3: usb_dev_resume), bevor er sich ohnehin abgemeldet hat.
-# authorized=0 verhindert, dass ueberhaupt ein Treiber gebunden wird.
-# Gemessen und umgestellt 2026-08-31.
+# Apple internal SD card reader — fully disabled (never used).
+# Two product IDs: 8403 on the USB 2 bus, 8406 on the SuperSpeed bus. Originally
+# only 8403 was listed, so the reader stayed active and cost 2.66 s on resume
+# (usb 2-3: usb_dev_resume) before dropping off anyway.
+# authorized=0 prevents any driver from binding at all.
+# Measured and changed 2026-08-31.
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="05ac", ATTR{idProduct}=="8403", \
   ATTR{authorized}="0"
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="05ac", ATTR{idProduct}=="8406", \

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Kurzer CPU-Performance-Burst direkt nach dem Resume, damit die Aufwach-Arbeit
-# schnell durchlaeuft. Wird via systemd-run im Hintergrund gestartet, blockiert
-# den Resume also nicht. Turbo bleibt danach an (siehe cpu-power.service).
+# Short CPU performance burst right after resume so the wake-up work finishes
+# quickly. Started in the background via systemd-run, so it does not block
+# resume. Turbo stays on afterwards (see cpu-power.service).
 set -u
 BOOST_SECONDS=4
 gov() { for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo "$1" > "$g" 2>/dev/null || true; done; }

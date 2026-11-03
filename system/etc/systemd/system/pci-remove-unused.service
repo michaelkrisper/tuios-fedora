@@ -1,17 +1,17 @@
 [Unit]
 Description=Ungenutzte PCI-Geraete entfernen (Thunderbolt, Audio, Kamera)
-# Diese Geraete haben keinen Treiber (Module sind per blacklist aus), bleiben
-# aber im PCI-Baum und haengen dort in D0 -- sie ziehen Strom, ohne etwas zu
-# tun, und werden bei jedem Suspend mitgenommen.
+# These devices have no driver (modules are blacklisted) but stay in the PCI
+# tree in D0 -- they draw power doing nothing and are dragged through every
+# suspend.
 #
-#   05:00.0  Thunderbolt-2-Bridge (DSL5520), zieht den ganzen Baum 06-9b mit.
-#            Kostete gemessen ~510 ms pro Suspend-Zyklus (2026-08-31).
-#   00:03.0  HDMI-Audio      \ snd_hda_intel ist blacklisted, im Suspend
-#   00:1b.0  HD-Audio        / kosten sie nur ~0,2 ms -- hier geht es um D0.
-#   02:00.0  FaceTime-Kamera, facetimehd ist blacklisted.
+#   05:00.0  Thunderbolt 2 bridge (DSL5520), takes the whole 06-9b tree along.
+#            Measured ~510 ms per suspend cycle (2026-08-31).
+#   00:03.0  HDMI audio      \ snd_hda_intel is blacklisted; in suspend they
+#   00:1b.0  HD audio        / cost only ~0.2 ms -- this is about D0.
+#   02:00.0  FaceTime camera, facetimehd is blacklisted.
 #
-# Nicht anfassen: 03:00.0 (WLAN, unter Root-Port 00:1c.2) und 00:14.0 (xHCI --
-# daran haengen interne Tastatur und Trackpad).
+# Do not touch: 03:00.0 (wifi, below root port 00:1c.2) and 00:14.0 (xHCI --
+# internal keyboard and trackpad hang off it).
 DefaultDependencies=no
 After=sysinit.target
 Before=basic.target

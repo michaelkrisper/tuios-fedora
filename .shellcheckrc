@@ -1,0 +1,2 @@
+# Dotfiles source files that only exist on the target machine.
+disable=SC1090,SC1091

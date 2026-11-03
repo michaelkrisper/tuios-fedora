@@ -1,19 +1,20 @@
-# tty1: Wayland-Sitzung (sway + foot) starten und darin Claude Code.
-# Nur nackte Textkonsole:  touch ~/.no-sway
-# Gar kein Autostart:      touch ~/.no-autoclaude
+# shellcheck shell=bash
+# tty1: start the Wayland session (sway + foot) and Claude Code inside it.
+# Bare text console only:  touch ~/.no-sway
+# No autostart at all:     touch ~/.no-autoclaude
 #
-# 2026-09-20: Die 3-Sekunden-Wartezeit mit Ctrl-C-Ausstieg ist entfallen --
-# NAutoVTs=6, Alt+F2 gibt jederzeit eine Login-Konsole. Der Hinweis auf "kde"
-# war seit der Plasma-Deinstallation falsch. Auch der cage-Fallback ist weg
-# (Paket deinstalliert); ohne sway landet man direkt in claude auf der
-# Textkonsole. Helligkeit: `bl 30`.
+# 2026-09-20: the 3-second wait with a Ctrl-C escape is gone -- NAutoVTs=6,
+# Alt+F2 gives a login console at any time. The "kde" hint had been wrong since
+# Plasma was uninstalled. The cage fallback is gone too (package removed);
+# without sway you land directly in claude on the text console.
+# Brightness: `bl 30`.
 
 if [ -e "$HOME/.no-autoclaude" ]; then
     :
 elif [ "$(tty)" = "/dev/tty1" ] && [ -z "$WAYLAND_DISPLAY$DISPLAY" ] && [ -z "$AUTOCLAUDE_STAGE" ]; then
-    # Stufe 1 - Textkonsole
-    # cage/wlroots kennt nur XKB_DEFAULT_*; ohne die Variablen landet man auf "us".
-    # Quelle bleibt localectl, damit es eine einzige Wahrheit gibt.
+    # Stage 1 - text console
+    # wlroots only knows XKB_DEFAULT_*; without these variables you get "us".
+    # The source stays localectl, so there is a single source of truth.
     if [ -r /etc/X11/xorg.conf.d/00-keyboard.conf ]; then
         eval "$(awk -F'"' '
             /XkbLayout/  {printf "XKB_DEFAULT_LAYOUT=%s\n",  $4}
@@ -25,16 +26,17 @@ elif [ "$(tty)" = "/dev/tty1" ] && [ -z "$WAYLAND_DISPLAY$DISPLAY" ] && [ -z "$A
     fi
 
     if command -v sway >/dev/null && [ ! -e "$HOME/.no-sway" ]; then
-        AUTOCLAUDE_STAGE=done sway   # Stufe 2 setzt der sway-config-exec
+        AUTOCLAUDE_STAGE="done" sway   # stage 2 is set by the exec in the sway config
     else
-        AUTOCLAUDE_STAGE=done; export AUTOCLAUDE_STAGE
+        AUTOCLAUDE_STAGE="done"; export AUTOCLAUDE_STAGE
         cd "$HOME" && claude
     fi
-    export AUTOCLAUDE_STAGE=done
+    export AUTOCLAUDE_STAGE="done"
 elif [ "$AUTOCLAUDE_STAGE" = "kiosk" ]; then
-    # Stufe 2 - in foot unter sway/cage
-    export AUTOCLAUDE_STAGE=done
+    # Stage 2 - in foot under sway
+    export AUTOCLAUDE_STAGE="done"
+    # shellcheck disable=SC2164  # on failure, start claude in the current dir
     cd "$HOME"
-    # Weitere Claude-Sessions als eigene foot-Tabs: Super+C (sway).
+    # More Claude sessions as separate tabs: Super+C (sway).
     claude
 fi

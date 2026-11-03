@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # .bash_profile
 
 # Get the aliases and functions
@@ -12,5 +13,5 @@ fi
 export PATH="/home/michi/.local/bin:$PATH"
 . "$HOME/.cargo/env"
 
-# Claude Code auf tty1 automatisch starten
+# Start Claude Code automatically on tty1
 [ -f ~/.config/tty-claude.sh ] && . ~/.config/tty-claude.sh

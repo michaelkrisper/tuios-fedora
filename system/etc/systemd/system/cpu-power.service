@@ -5,16 +5,16 @@ After=multi-user.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# Governor: powersave regelt auf intel_pstate lastabhaengig selbst.
+# Governor: on intel_pstate, powersave scales with load by itself.
 ExecStart=/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo powersave > $g; done'
-# Turbo AN: hebt nur die Obergrenze unter Last (2400 -> 2900 MHz), im Leerlauf
-# sitzt die CPU unveraendert bei 800 MHz in C9/C10. Bei langen Volllastlaeufen
-# bewusst abschalten.
+# Turbo ON: only raises the ceiling under load (2400 -> 2900 MHz); when idle the
+# CPU still sits at 800 MHz in C9/C10. Turn it off deliberately for long
+# full-load runs.
 ExecStart=/bin/sh -c 'echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo'
-# Energy Performance Bias auf 15 (sparsamster Wert). Stand fruher in der
-# separaten cpu-powersave.service -- die ist am 2026-08-31 abgeschaltet worden,
-# weil sie zusaetzlich no_turbo=1 setzte und damit dieser Unit widersprach.
-# Wer von beiden gewann, haing an der Startreihenfolge.
+# Energy Performance Bias 15 (most power-saving value). Used to live in the
+# separate cpu-powersave.service -- disabled on 2026-08-31 because it also set
+# no_turbo=1 and so contradicted this unit. Which one won depended on start
+# order.
 ExecStart=/bin/sh -c 'for b in /sys/devices/system/cpu/cpu*/power/energy_perf_bias; do echo 15 > $b; done'
 
 [Install]

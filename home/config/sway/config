@@ -1,43 +1,42 @@
-# Nachfolger des cage-Kiosks: gleiche Idee (foot bildschirmfuellend), aber mit
-# Fensterwechsel und einer Zwischenablage, die alle Clients teilen.
-# Seit 2026-11-01 ohne tmux: jedes Terminal ist ein eigenes foot-Fenster, alle
-# Fenster (auch grafische wie Chrome) liegen als Tabs auf einem Workspace.
+# Successor of the cage kiosk: same idea (foot fullscreen), but with window
+# switching and a clipboard shared by all clients.
+# Since 2026-11-01 without tmux: every terminal is its own foot window, and all
+# windows (graphical ones like Chrome too) are tabs in the bar.
 
 set $mod Mod4
-# Ein foot-Server fuer alle Fenster: Schriften und Glyphen-Cache gibt es nur
-# einmal. Einzelne foot-Prozesse kosten je ~36 MB, ein footclient-Fenster
-# nur seinen Scrollback.
+# One foot server for all windows: fonts and glyph cache exist only once.
+# Separate foot processes cost ~36 MB each, a footclient window only its
+# scrollback.
 set $term footclient
 set $browser ~/.local/bin/google-chrome-stable --ozone-platform-hint=auto
 
-# Fenster liegen als Tabs uebereinander statt nebeneinander: jedes ist voll
-# gross, die Tableiste oben zeigt, was sonst noch offen ist.
+# Windows are stacked as tabs instead of side by side: each one is full size.
 workspace_layout tabbed
 default_border none
-# --i3 blendet die Tableiste aus, solange nur ein Fenster im Tab-Container
-# liegt -- bei einem einzelnen foot sieht es also aus wie frueher unter cage.
+# --i3 hides the tab title bar while there is only one window in the tabbed
+# container -- a single foot looks exactly like it did under cage.
 hide_edge_borders --i3 smart
 font pango:Cascadia Mono NF 8
-# Kein swaybg: jedes Fenster ist bildschirmfuellend, der Hintergrund ist nie
-# sichtbar -- spart den Prozess (8 MB) und seinen Vollbild-Puffer.
+# No swaybg: every window is fullscreen, the background is never visible --
+# saves the process (8 MB) and its fullscreen buffer.
 swaybg_command -
 
 focus_follows_mouse no
-# Scale 2 (Retina): alle Clients rendern in normaler Groesse, ohne Flags pro App.
+# Scale 2 (Retina): all clients render at normal size, no per-app flags.
 output eDP-1 scale 2
 
-# Touchpad: Antippen zaehlt als Klick (libinput hat tap standardmaessig aus).
-# Zwei Finger = rechte Taste, drei = mittlere.
+# Touchpad: tap to click (libinput has tap off by default).
+# Two fingers = right button, three = middle.
 input "1452:602:bcm5974" {
     tap enabled
     tap_button_map lrm
-    # Scrollrichtung wie unter macOS: Inhalt folgt den Fingern.
+    # Scroll direction as on macOS: content follows the fingers.
     natural_scroll enabled
-    # dwt ist libinput-Default, hier nur explizit festgehalten.
+    # dwt is the libinput default, only spelled out here.
     dwt enabled
 }
 
-# Tabs sind Workspaces (siehe bar unten).
+# Tabs are workspaces (see bar below).
 bindsym Mod1+Tab       workspace next_on_output
 bindsym Mod1+Shift+Tab workspace prev_on_output
 bindsym $mod+Tab       workspace next_on_output
@@ -54,27 +53,26 @@ bindsym $mod+f         fullscreen toggle
 bindsym $mod+Shift+c   reload
 bindsym $mod+Shift+e   exec swaymsg exit
 
-# KEY_SCALE/KEY_DASHBOARD (F3 weiter, F4 neues Terminal) werden bewusst NICHT
-# hier gebunden: specialkeysd liest /dev/input direkt und schickt swaymsg. Zwei Ebenen auf derselben
-# Taste heissen zwei Aktionen pro Druck.
+# KEY_SCALE/KEY_DASHBOARD (F3 next, F4 new terminal) are deliberately NOT bound
+# here: specialkeysd reads /dev/input directly and sends swaymsg. Two layers on
+# the same key mean two actions per press.
 
-# Helligkeit macht specialkeysd (System-Dienst, liest /dev/input direkt) --
-# hier bewusst KEINE Bindings. Mit beiden lief pro Tastendruck zweierlei: sways
-# lineare 5-Prozentpunkte und die feine Stufentabelle von specialkeysd, die
-# Ergebnisse addierten sich (1 % + 5 % = 6 %) und die Unterkante blieb bei
-# 5 % haengen.
+# Brightness is handled by specialkeysd (system service, reads /dev/input
+# directly) -- deliberately NO bindings here. With both, every key press did
+# two things: sway's linear 5-point steps and specialkeysd's fine step table;
+# the results added up (1 % + 5 % = 6 %) and the lower end got stuck at 5 %.
 
-# Tabs im Catppuccin-Look der frueheren tmux-Leiste.
-#                       Rahmen  Hintergr. Text    Indikator
+# Tabs in the Catppuccin look of the former tmux bar.
+#                       border  backgr.   text    indicator
 client.focused          #89b4fa #89b4fa   #1e1e2e #89b4fa
 client.focused_inactive #181825 #181825   #cdd6f4 #181825
 client.unfocused        #181825 #181825   #a6adc8 #181825
 
-# Eine Leiste wie frueher bei tmux: links die Tabs, rechts CPU, Netz, Akku, Uhr.
-# Die Tabs sind Workspace-Buttons -- swaybar-status legt jedes Fenster auf einen
-# eigenen Workspace "N:Titel", strip_workspace_numbers blendet das "N:" aus.
-# sways eigene Tableiste taugt dafuer nicht: sie ist eine zweite Leiste ueber
-# dem Fenster, ohne Platz fuer den Status.
+# One bar, as with tmux before: tabs on the left; CPU, network, battery, clock
+# on the right. The tabs are workspace buttons -- swaybar-status puts every
+# window on its own workspace "N:title", strip_workspace_numbers hides the "N:".
+# sway's own tab bar is no use for this: it is a second bar above the window
+# with no room for the status.
 bar {
     position bottom
     status_command ~/.local/bin/swaybar-status --loop 5
@@ -85,7 +83,7 @@ bar {
     colors {
         background #11111b
         statusline #cdd6f4
-        #                  Rahmen  Hintergr. Text
+        #                  border  backgr.   text
         focused_workspace  #89b4fa #89b4fa   #1e1e2e
         active_workspace   #11111b #11111b   #cdd6f4
         inactive_workspace #11111b #11111b   #a6adc8
@@ -93,8 +91,8 @@ bar {
     }
 }
 
-# Startfenster: foot mit Claude (Stufe 2 aus tty-claude.sh). Nur dieses eine
-# bekommt die Kiosk-Stufe -- weitere Terminals (Super+Return) sind eine
-# normale Shell, Super+C ein weiteres Claude.
+# Initial window: foot with Claude (stage 2 of tty-claude.sh). Only this one
+# gets the kiosk stage -- further terminals (Super+Return) are a plain shell,
+# Super+C another Claude.
 exec foot --server
 exec sh -c 'until [ -S "$XDG_RUNTIME_DIR/foot-$WAYLAND_DISPLAY.sock" ]; do sleep 0.05; done; AUTOCLAUDE_STAGE=kiosk exec footclient -E'

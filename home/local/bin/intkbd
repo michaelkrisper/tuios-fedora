@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# intkbd [off|on|status] - interne MacBook-Tastatur ab-/anmelden.
-# Trackpad bleibt an: das haengt an Interface 1-5:1.2 (bcm5974),
-# die Tastatur an der HID-Node 0003:05AC:025A.0001 (Treiber "apple").
+# intkbd [off|on|status] - detach/attach the internal MacBook keyboard.
+# The trackpad stays on: it sits on interface 1-5:1.2 (bcm5974), the keyboard
+# on HID node 0003:05AC:025A.0001 (driver "apple").
 HID=0003:05AC:025A.0001
 DRV=/sys/bus/hid/drivers/apple
 case "${1:-status}" in

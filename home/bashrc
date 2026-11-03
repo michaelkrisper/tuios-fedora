@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # .bashrc
 
 # Source global definitions
@@ -6,6 +7,7 @@ if [ -f /etc/bashrc ]; then
 fi
 
 # User specific environment
+# shellcheck disable=SC2076  # Fedora skeleton: literal substring match
 if ! [[ "$PATH" =~ "$HOME/.local/bin:$HOME/bin:" ]]; then
     PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 fi
@@ -49,15 +51,15 @@ if [ -f '/home/michi/.local/share/google-cloud-sdk/path.bash.inc' ]; then . '/ho
 if [ -f '/home/michi/.local/share/google-cloud-sdk/completion.bash.inc' ]; then . '/home/michi/.local/share/google-cloud-sdk/completion.bash.inc'; fi
 
 # --- fzf -------------------------------------------------------------------
-# Alt-C   in einen Unterordner wechseln (Volltextsuche)
-# Ctrl-R  Kommandohistorie durchsuchen
-# Ctrl-F  Dateipfad in die Zeile einfuegen
-# Ctrl-F statt fzfs Vorgabe Ctrl-T (das hat frueher tmux abgefangen; die
-# Belegung ist geblieben).
+# Alt-C   cd into a subdirectory (fuzzy search)
+# Ctrl-R  search command history
+# Ctrl-F  insert a file path into the command line
+# Ctrl-F instead of fzf's default Ctrl-T (tmux used to grab that; the binding
+# stayed).
 if command -v fzf >/dev/null; then
     eval "$(fzf --bash)"
     bind -m emacs-standard -x '"\C-f": fzf-file-widget'
-    # fd statt find: schneller und ueberspringt .gitignore von selbst
+    # fd instead of find: faster and honours .gitignore by itself
     export FZF_ALT_C_COMMAND='fd --type d --hidden --exclude .git --exclude node_modules'
     export FZF_CTRL_T_COMMAND='fd --type f --hidden --exclude .git --exclude node_modules'
     export FZF_DEFAULT_OPTS='--height=60% --layout=reverse --border --info=inline'
@@ -65,11 +67,11 @@ if command -v fzf >/dev/null; then
     export FZF_CTRL_T_OPTS='--preview "bat --style=numbers --color=always --line-range=:60 {} 2>/dev/null || ls -la {}"'
 fi
 
-# Fenstertitel = Arbeitspfad, waehrend ein Befehl laeuft "<pfad>: <befehl>".
-# swaybar-status zeigt ihn als Tab und sucht ueber den Teil vor ": " die
-# Claude-Werte des Tabs (statusline --bar schreibt "<pfad>: <sessiontitel>").
-# Der DEBUG-Trap feuert vor jedem einfachen Befehl; __title_armed sorgt dafuer,
-# dass nur der erste nach dem Prompt den Titel setzt.
+# Window title = working directory, "<path>: <command>" while a command runs.
+# swaybar-status shows it as a tab and uses the part before ": " to look up the
+# tab's Claude values (statusline --bar writes "<path>: <session title>").
+# The DEBUG trap fires before every simple command; __title_armed makes sure
+# only the first one after the prompt sets the title.
 __title() { printf '\e]2;%s\a' "${PWD/#$HOME/\~}"; __title_armed=1; }
 __title_cmd() {
     [ -n "$__title_armed" ] || return 0
