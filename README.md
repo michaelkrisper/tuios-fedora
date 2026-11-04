@@ -2,6 +2,11 @@
 
 [![CI](https://github.com/michaelkrisper/tuios-fedora/actions/workflows/ci.yml/badge.svg)](https://github.com/michaelkrisper/tuios-fedora/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Language: C](https://img.shields.io/badge/language-C-555.svg)](src/)
+[![Fedora 44](https://img.shields.io/badge/Fedora-44-51a2da.svg)](SETUP.md)
+
+Versioned TTY kiosk for a MacBook Pro on Fedora: sway tabs, `foot --server`
+and two dependency-free C programs instead of a desktop environment.
 
 A MacBook Pro 11,1 running Fedora that boots straight into a terminal — no
 desktop, no compositor chrome, no session manager. Every window gets its
@@ -77,7 +82,7 @@ itself via SIGPIPE once swaybar closes the read end, and only writes a line when
 the rendered output actually changed, so an idle bar causes no redraws at all.
 
 Without `--loop` it prints one line and keeps its counters in
-`$XDG_RUNTIME_DIR/.tmux-cpu`, which is useful for testing. The battery path can
+`$XDG_RUNTIME_DIR/.swaybar-cpu`, which is useful for testing. The battery path can
 be overridden at build time:
 
 ```sh
@@ -105,6 +110,10 @@ compositor as well means two actions per press — the comments in the sway conf
 record both times that happened, once for brightness and once for Exposé.
 
 ## Notes
+
+Code, comments and documentation are in English; the few user-facing strings
+(systemd unit descriptions, the output of `resume-check`) are German, the
+machine's UI language.
 
 The glyphs (, 󰁹, 󰂄) come from a Nerd Font — the bar font needs one to render
 them.
