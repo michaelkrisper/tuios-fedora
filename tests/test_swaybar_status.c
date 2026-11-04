@@ -152,10 +152,6 @@ static void test_tree(void) {
     CHECK_EQ(nl, 2);
     CHECK_EQ(jnget(lv[0], "id"), 12);           // most recently focused first
     CHECK_EQ(jnget(lv[1], "id"), 11);
-
-    int f = focused_node(root);
-    CHECK(f >= 0);
-    CHECK_STR(jsget(f, "name"), "~/c: vim");
 }
 
 static void test_cmd_add(void) {

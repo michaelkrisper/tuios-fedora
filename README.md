@@ -29,7 +29,7 @@ noticeably on a battery this old. What is left boots in about 15 seconds into
 
 | | |
 |---|---|
-| `src/swaybar-status.c` | the one bar: tabs (one window per workspace, named after its title), Claude context + 5 h limit of the focused tab, CPU, network, battery, clock — dependency-free C |
+| `src/swaybar-status.c` | the one bar: tabs (one window per workspace, named after its title), Claude weekly limit, CPU, network, battery, clock — dependency-free C |
 | `src/specialkeysd.c` | brightness, keyboard backlight, idle dimming, and the Exposé/Dashboard keys |
 | `home/config/sway/config` | bar with tabs + status, foot server, touchpad |
 | `home/config/tty-claude.sh` | tty1 autostart: sway, then Claude Code in the first terminal |
@@ -55,10 +55,9 @@ window on an occupied workspace moves to a fresh one behind the last, every
 workspace is renamed "N:<window title>" (the bar strips the number), and
 closing the last window of the visible workspace jumps to the previous tab.
 The window title is the working directory (bash `PROMPT_COMMAND`, and
-`statusline --bar` from claude-statusline inside Claude Code). That same path
-keys `$XDG_RUNTIME_DIR/claude-bar/<path, / as %>`, where `statusline --bar`
-leaves the session's context gauge; `limits` holds the 5 h window. inotify on
-that directory redraws immediately.
+`statusline --bar` from claude-statusline inside Claude Code). `statusline --bar`
+also leaves the account's weekly limit in `$XDG_RUNTIME_DIR/claude-bar/limits`;
+inotify on that directory redraws immediately.
 
 * **CPU** — busy percentage over the last interval, from `/proc/stat`. Turns
   red at 70 %.

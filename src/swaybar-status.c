@@ -1,6 +1,6 @@
 
 // swaybar-status: the kiosk's single bar -- tabs on the left; on the right
-// Claude (context of the focused tab, 5 h limit), CPU, network, battery, clock.
+// Claude (weekly limit), CPU, network, battery, clock.
 // Output is Pango markup (bar { pango_markup enabled }). Called tmux-status
 // until 2026-11-01.
 // build: make && make install   (see README)
@@ -12,9 +12,8 @@
 // closed -> previous tab. sway's own tab bar is no use: it is a second bar with
 // no room for the status.
 //
-// Claude: `statusline --bar` (repo claude-statusline) writes one file per
-// session to $XDG_RUNTIME_DIR/claude-bar/<path, / as %>, plus "limits"; the
-// window title is the same path. inotify on that directory shows changes
+// Claude: `statusline --bar` (repo claude-statusline) writes the weekly limit to
+// $XDG_RUNTIME_DIR/claude-bar/limits. inotify on that directory shows changes
 // immediately instead of on the next tick.
 //
 // Two modes:
@@ -230,17 +229,14 @@ static void col(const char *span) {
 // ---------------------------------------------------------------- Claude
 
 static char rtdir[256];             // $XDG_RUNTIME_DIR/claude-bar
-static char focus_key[512];         // path from the focused window's title
 
-static void put_file(const char *name, long maxage) {
-    char path[1024], b[600];
-    int n = (int)strlen(rtdir);
-    if (!n || n + 2 + (int)strlen(name) >= (int)sizeof path) return;
-    memcpy(path, rtdir, (size_t)n); path[n++] = '/';
-    for (const char *k = name; *k; k++) path[n++] = *k == '/' ? '%' : *k;
-    path[n] = 0;
+static void put_limits(void) {
+    char path[sizeof rtdir + 8], b[600];
+    if (!rtdir[0]) return;
+    snprintf(path, sizeof path, "%s/limits", rtdir);
     struct stat st;
-    if (stat(path, &st) || (maxage && time(NULL) - st.st_mtime > maxage)) return;
+    // older than one weekly window: stale
+    if (stat(path, &st) || time(NULL) - st.st_mtime > 7 * 86400) return;
     int l = slurp(path, b, sizeof b);
     while (l && (b[l - 1] == '\n' || b[l - 1] == ' ')) b[--l] = 0;
     if (l) { put(b); put("  "); }
@@ -248,8 +244,7 @@ static void put_file(const char *name, long maxage) {
 
 static void render(long cpu, long rxr, long txr) {
     olen = 0; inspan = 0;
-    if (focus_key[0]) put_file(focus_key, 0);
-    put_file("limits", 5 * 3600);           // older than one 5 h window: stale
+    put_limits();
     pad(cpu < 0 ? 1 : 3 - digits(cpu));
     col(cpu >= 70 ? FG("#f38ba8") : FG("#89b4fa"));
     put("");
@@ -491,20 +486,6 @@ static void leaves(int node, int *out, int *n) {
     }
 }
 
-static int focused_node(int node) {
-    int c = jget(node, "focused");
-    if (c >= 0 && jv[c].n) return node;
-    const char *lists[2] = { "nodes", "floating_nodes" };
-    for (int l = 0; l < 2; l++) {
-        int a = jget(node, lists[l]);
-        for (int k = a >= 0 ? jv[a].kid : -1; k >= 0; k = jv[k].next) {
-            int f = focused_node(k);
-            if (f >= 0) return f;
-        }
-    }
-    return -1;
-}
-
 static int workspaces(int root, int *ws) {
     int n = 0, outs = jget(root, "nodes");
     for (int o = outs >= 0 ? jv[outs].kid : -1; o >= 0; o = jv[o].next) {
@@ -612,11 +593,6 @@ static void tidy(int fd, const char *change, double con, int start) {
             cmd_add(line);
         }
     }
-    int f = focused_node(root);
-    const char *ft = f >= 0 && jget(f, "pid") >= 0 ? jsget(f, "name") : NULL;
-    snprintf(focus_key, sizeof focus_key, "%s", ft ? ft : "");
-    char *sep = strstr(focus_key, ": ");               // "<path>: <command/title>"
-    if (sep) *sep = 0;
     if (cmdlen) free(ipc_call(fd, 0, cmdbuf));
     free(tree);
 }
