@@ -29,7 +29,7 @@ noticeably on a battery this old. What is left boots in about 15 seconds into
 
 | | |
 |---|---|
-| `src/swaybar-status.c` | the one bar: tabs (one window per workspace, named after its title), Claude weekly limit, CPU, network, battery, clock — dependency-free C |
+| `src/swaybar-status.c` | the one bar: tabs (one window per workspace, named after its title), optional Claude weekly limit, CPU, network, battery, clock — dependency-free C |
 | `src/specialkeysd.c` | brightness, keyboard backlight, idle dimming, and the Exposé/Dashboard keys |
 | `home/config/sway/config` | bar with tabs + status, foot server, touchpad |
 | `home/config/tty-claude.sh` | tty1 autostart: sway, then Claude Code in the first terminal |
@@ -54,10 +54,11 @@ In `--loop` mode the program also holds two sway IPC connections: every new
 window on an occupied workspace moves to a fresh one behind the last, every
 workspace is renamed "N:<window title>" (the bar strips the number), and
 closing the last window of the visible workspace jumps to the previous tab.
-The window title is the working directory (bash `PROMPT_COMMAND`, and
-`statusline --bar` from claude-statusline inside Claude Code). `statusline --bar`
-also leaves the account's weekly limit in `$XDG_RUNTIME_DIR/claude-bar/limits`;
-inotify on that directory redraws immediately.
+The window title is the working directory (bash `PROMPT_COMMAND`). The Claude
+weekly limit appears only while `$XDG_RUNTIME_DIR/claude-bar/limits` exists;
+inotify on that directory redraws immediately. Nothing writes that file by
+default: `statusline --bar` from claude-statusline does when set as Claude Code's
+statusLine command, and it also keeps the window title current inside Claude Code.
 
 * **CPU** — busy percentage over the last interval, from `/proc/stat`. Turns
   red at 70 %.
