@@ -182,6 +182,7 @@ claude-statusline as the statusLine command.
 | Dashboard key, `Super-Return` | new terminal |
 | `Super-C` | new terminal running Claude |
 | `Super-B` | Chrome |
+| Mute, volume keys | `wpctl`, shown in the bar |
 
 ---
 

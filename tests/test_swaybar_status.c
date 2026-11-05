@@ -161,6 +161,97 @@ static void test_cmd_add(void) {
     CHECK_STR(cmdbuf, "workspace 1; workspace 2");
 }
 
+static void test_volume(void) {
+    int m = -1;
+    CHECK_EQ(vol_parse("Volume: 0.60\n", &m), 60);
+    CHECK_EQ(m, 0);
+    CHECK_EQ(vol_parse("Volume: 1.00 [MUTED]\n", &m), 100);
+    CHECK_EQ(m, 1);
+    CHECK_EQ(vol_parse("Volume: 0.05\n", &m), 5);
+    CHECK_EQ(vol_parse("Translate ID error: no matching node\n", &m), -1);
+    CHECK_EQ(vol_parse("", &m), -1);
+
+    olen = 0; inspan = 0;
+    vol = -1; put_volume();
+    CHECK_STR(rendered(), "");
+    volmute = 0;
+#define ICON(colour, size, glyph) \
+    "<span foreground='" colour "'><span font_size='" size "'>" glyph "</span></span>"
+    static const struct { long v; const char *want; } levels[] = {
+        { 0,   ICON("#9399b2", "14pt", "\U000F0581") },     // silent, same as muted
+        { 1,   ICON("#cba6f7", "14pt", "\U000F057F") },
+        { 10,  ICON("#cba6f7", "14pt", "\U000F057F") },
+        { 20,  ICON("#cba6f7", "14pt", "\U000F0580") },
+        { 40,  ICON("#cba6f7", "14pt", "\U000F0580") },
+        { 50,  ICON("#cba6f7", "14pt", "\U000F057E") },
+        { 70,  ICON("#cba6f7", "14pt", "\U000F057E") },
+        { 80,  ICON("#cba6f7", "18pt' letter_spacing='-2816", "") },
+        { 100, ICON("#cba6f7", "18pt' letter_spacing='-2816", "") },
+        { 150, ICON("#cba6f7", "18pt' letter_spacing='-2816", "") },
+    };
+    for (size_t i = 0; i < sizeof levels / sizeof *levels; i++) {
+        olen = 0; vol = levels[i].v; put_volume();
+        CHECK_STR(rendered(), levels[i].want);
+    }
+    olen = 0; vol = 60; volmute = 1; put_volume();
+    CHECK_STR(rendered(), ICON("#9399b2", "14pt", "\U000F0581"));
+    olen = 0; vol = 90; put_volume();                       // muted beats loud
+    CHECK_STR(rendered(), ICON("#9399b2", "14pt", "\U000F0581"));
+    vol = -1; volmute = 0;
+}
+
+static int attr(char *b, int off, int type, const void *d, int len) {
+    struct nlattr a = { .nla_len = (uint16_t)(NLA_HDRLEN + len), .nla_type = (uint16_t)type };
+    memcpy(b + off, &a, NLA_HDRLEN);
+    memcpy(b + off + NLA_HDRLEN, d, (size_t)len);
+    return off + NLA_ALIGN(NLA_HDRLEN + len);
+}
+
+// One GET_SCAN message holding a single BSS.
+static int scan_msg(char *b, uint32_t status, int32_t mbm) {
+    char nest[32];
+    int nl = attr(nest, 0, NL80211_BSS_STATUS, &status, 4);
+    nl = attr(nest, nl, NL80211_BSS_SIGNAL_MBM, &mbm, 4);
+    int off = attr(b, NLMSG_HDRLEN + GENL_HDRLEN, NL80211_ATTR_BSS, nest, nl);
+    struct nlmsghdr h = { .nlmsg_len = (uint32_t)off, .nlmsg_type = 30 };
+    memcpy(b, &h, sizeof h);
+    return off;
+}
+
+static void test_wifi(void) {
+    CHECK_EQ(wifi_bars(-5000), 4);
+    CHECK_EQ(wifi_bars(-5500), 4);
+    CHECK_EQ(wifi_bars(-5501), 3);
+    CHECK_EQ(wifi_bars(-6700), 3);
+    CHECK_EQ(wifi_bars(-7500), 2);
+    CHECK_EQ(wifi_bars(-9000), 1);
+
+    uint32_t buf[32];
+    char *b = (char *)buf;
+    int bars = 0, n = scan_msg(b, NL80211_BSS_STATUS_ASSOCIATED, -5900);
+    CHECK_EQ(wifi_msgs(b, n, &bars), 0);
+    CHECK_EQ(bars, 3);
+
+    bars = 0; n = scan_msg(b, NL80211_BSS_STATUS_AUTHENTICATED, -5900);
+    CHECK_EQ(wifi_msgs(b, n, &bars), 0);        // a neighbour's BSS is not a connection
+    CHECK_EQ(bars, 0);
+
+    struct nlmsghdr h = { .nlmsg_len = NLMSG_HDRLEN, .nlmsg_type = NLMSG_DONE };
+    memcpy(b, &h, sizeof h);
+    CHECK_EQ(wifi_msgs(b, NLMSG_HDRLEN, &bars), 1);
+    h.nlmsg_type = NLMSG_ERROR;
+    memcpy(b, &h, sizeof h);
+    CHECK_EQ(wifi_msgs(b, NLMSG_HDRLEN, &bars), -1);
+    h.nlmsg_len = 4096;                         // longer than what arrived
+    memcpy(b, &h, sizeof h);
+    CHECK_EQ(wifi_msgs(b, NLMSG_HDRLEN, &bars), -1);
+
+    olen = 0; inspan = 0; wifibars = 3; put_wifi();
+    CHECK_STR(rendered(), ICON("#94e2d5", "14pt", "\U000F0925") " ");
+    olen = 0; wifibars = 0; put_wifi();
+    CHECK_STR(rendered(), ICON("#f38ba8", "14pt", "\U000F092E") " ");
+}
+
 int main(void) {
     test_numbers();
     test_rates();
@@ -171,5 +262,7 @@ int main(void) {
     test_json();
     test_tree();
     test_cmd_add();
+    test_volume();
+    test_wifi();
     return report("swaybar-status");
 }

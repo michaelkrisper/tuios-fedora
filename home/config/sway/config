@@ -62,6 +62,15 @@ bindsym $mod+Shift+e   exec swaymsg exit
 # two things: sway's linear 5-point steps and specialkeysd's fine step table;
 # the results added up (1 % + 5 % = 6 %) and the lower end got stuck at 5 %.
 
+# Volume via wpctl: pactl is not installed here, and specialkeysd leaves these
+# keys alone, so nothing fires twice. The tick tells swaybar-status to re-read
+# the volume; otherwise it only reads it at start.
+set $sink @DEFAULT_AUDIO_SINK@
+set $voltick swaymsg -q -t send_tick volume
+bindsym --locked XF86AudioMute        exec wpctl set-mute $sink toggle && $voltick
+bindsym --locked XF86AudioLowerVolume exec wpctl set-volume $sink 10%- && $voltick
+bindsym --locked XF86AudioRaiseVolume exec wpctl set-volume -l 1.0 $sink 10%+ && $voltick
+
 # Tabs in the Catppuccin look of the former tmux bar.
 #                       border  backgr.   text    indicator
 client.focused          #89b4fa #89b4fa   #1e1e2e #89b4fa
@@ -74,6 +83,9 @@ client.unfocused        #181825 #181825   #a6adc8 #181825
 # sway's own tab bar is no use for this: it is a second bar above the window
 # with no room for the status.
 bar {
+    font pango:Cascadia Mono NF 10
+    # Fixed height: the larger "loud" icon must not resize every window.
+    height 24
     position bottom
     status_command ~/.local/bin/swaybar-status --loop 5
     pango_markup enabled
