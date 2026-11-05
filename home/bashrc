@@ -79,4 +79,6 @@ __title_cmd() {
     printf '\e]2;%s: %s\a' "${PWD/#$HOME/\~}" "${BASH_COMMAND//[[:cntrl:]]/ }"
 }
 trap __title_cmd DEBUG
-PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }__title"
+# A separate, last element: otherwise systemd's PROMPT_COMMAND hook
+# (80-systemd-osc-context.sh) consumes __title_armed and ends up in the title.
+PROMPT_COMMAND+=(__title)

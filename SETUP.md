@@ -170,10 +170,11 @@ the comments in the config record both times that happened.
 make && make install                    # swaybar-status -> ~/.local/bin, swaymsg reload
 ```
 
-swaybar runs `swaybar-status --loop 5` (Pango output, see README). For the
-Claude fields, Claude Code's statusLine command is `statusline --bar` from
-claude-statusline and `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` is set in
-`~/.claude/settings.json` env, so the title stays the working directory.
+swaybar runs `swaybar-status --loop 5` (Pango output, see README).
+`CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` is set in `~/.claude/settings.json` env, so
+the title stays what bash set (`<path>: claude`). No statusLine command is set, so
+the bar shows no Claude weekly limit; to get it back, set `statusline --bar` from
+claude-statusline as the statusLine command.
 
 | | |
 |---|---|
@@ -181,6 +182,7 @@ claude-statusline and `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` is set in
 | Dashboard key, `Super-Return` | new terminal |
 | `Super-C` | new terminal running Claude |
 | `Super-B` | Chrome |
+| Mute, volume keys | `wpctl`, shown in the bar |
 
 ---
 

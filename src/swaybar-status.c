@@ -1,6 +1,6 @@
 
 // swaybar-status: the kiosk's single bar -- tabs on the left; on the right
-// Claude (weekly limit), CPU, network, battery, clock.
+// Claude (weekly limit), CPU, network, battery, WLAN, volume, clock.
 // Output is Pango markup (bar { pango_markup enabled }). Called tmux-status
 // until 2026-11-01.
 // build: make && make install   (see README)
@@ -16,6 +16,12 @@
 // $XDG_RUNTIME_DIR/claude-bar/limits. inotify on that directory shows changes
 // immediately instead of on the next tick.
 //
+// Volume: `wpctl get-volume` is the one fork in here (13 ms), so it does not run
+// per tick: only at start and on sway's tick "volume", sent by the volume key
+// bindings. Changes without a key (headphone jack) show up on the next press.
+//
+// WLAN: nl80211 scan cache over netlink, see the WLAN section.
+//
 // Two modes:
 //   no argument  : print once, CPU delta via a cache file (for testing)
 //   --loop [sec] : keep running and write a line every [sec] seconds
@@ -30,7 +36,13 @@
 // through open/read/write and a hand-written number formatter.
 #define _GNU_SOURCE
 #include <fcntl.h>
+#include <linux/genetlink.h>
+#include <linux/netlink.h>
+#include <linux/nl80211.h>
+#include <net/if.h>
 #include <poll.h>
+#include <signal.h>
+#include <spawn.h>
 #include <stdint.h>
 #include <stdio.h>                  // snprintf only, no FILE buffer
 #include <string.h>
@@ -38,13 +50,16 @@
 #include <sys/inotify.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
 #ifndef BATDIR                      // overridable for tests
 #define BATDIR "/sys/class/power_supply/BAT0/"
 #endif
+#define WLANIF "wlp3s0"
 
 static char out[2048];
 static int olen;
@@ -226,6 +241,12 @@ static void col(const char *span) {
 }
 #define FG(c) "<span foreground='" c "'>"
 
+// Icons are hard to see at text size. Bold does not help: the Nerd Font glyphs
+// are identical in every weight of the font.
+static void sym(const char *glyph) {
+    put("<span font_size='14pt'>"); put(glyph); put("</span>");
+}
+
 // ---------------------------------------------------------------- Claude
 
 static char rtdir[256];             // $XDG_RUNTIME_DIR/claude-bar
@@ -242,12 +263,179 @@ static void put_limits(void) {
     if (l) { put(b); put("  "); }
 }
 
+// ---------------------------------------------------------------- Volume
+
+static long vol = -1;              // percent; -1 = unknown, field is left out
+static int volmute;
+
+// "Volume: 0.60 [MUTED]\n" -> 60 and *muted = 1; anything else -> -1
+static long vol_parse(const char *s, int *muted) {
+    if (strncmp(s, "Volume: ", 8)) return -1;
+    const char *p = s + 8;
+    long whole = (long)nextul(&p), hundredths = (long)nextul(&p);
+    *muted = strstr(p, "[MUTED]") != NULL;
+    return whole * 100 + hundredths;
+}
+
+static void vol_refresh(void) {
+    static char *const av[] = { "wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@", NULL };
+    int p[2];
+    pid_t pid;
+    vol = -1;
+    if (pipe2(p, O_CLOEXEC)) return;
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_adddup2(&fa, p[1], 1);
+    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    int err = posix_spawnp(&pid, "wpctl", &fa, NULL, av, environ);
+    posix_spawn_file_actions_destroy(&fa);
+    close(p[1]);
+    if (!err) {
+        // Read to EOF: wpctl writes "[MUTED]" separately. The timeout and the
+        // kill are there because a hanging PipeWire must not freeze the tabs.
+        struct pollfd pf = { p[0], POLLIN, 0 };
+        char b[64];
+        int n = 0, r;
+        while (n < (int)sizeof b - 1 && poll(&pf, 1, 500) > 0 &&
+               (r = (int)read(p[0], b + n, sizeof b - 1 - (size_t)n)) > 0)
+            n += r;
+        b[n] = 0;
+        vol = vol_parse(b, &volmute);
+        kill(pid, SIGKILL);
+        waitpid(pid, NULL, 0);
+    }
+    close(p[0]);
+}
+
+static void put_volume(void) {
+    if (vol < 0) return;
+    int silent = volmute || vol == 0;
+    col(silent ? FG("#9399b2") : FG("#cba6f7"));
+    // Crossed out, then 0, 1, 2, 3 waves: nf-md-volume_off, _low, _medium, _high.
+    // Three waves only exist as nf-fa-volume_up, drawn smaller: 18pt matches the
+    // others' 14pt. The letter spacing takes back its extra width so the status does
+    // not shift; the taller line is why the sway config fixes the bar height.
+    if (!silent && vol > 70) put("<span font_size='18pt' letter_spacing='-2816'></span>");
+    else sym(silent ? "\U000F0581" : vol <= 10 ? "\U000F057F" : vol <= 40 ? "\U000F0580" : "\U000F057E");
+    col(NULL);
+}
+
+// ---------------------------------------------------------------- WLAN
+// Connection and signal come from nl80211's scan cache: no fork, no root, no
+// firmware access. It is the only unprivileged source here: the kernel has no
+// /proc/net/wireless (CFG80211_WEXT off) and wl answers GET_STATION with EPERM.
+// So "connected" is current, but the signal is only as new as the last scan.
+
+static int wifibars;                // 1-4, 0 = not connected
+static int nlfd = -1, nlfam;        // generic netlink socket, nl80211's family id
+static char nlbuf[32768] __attribute__((aligned(4)));
+
+static struct nlattr *nla_next(char **p, const char *end) {
+    struct nlattr *a = (struct nlattr *)*p;
+    if (end - *p < NLA_HDRLEN || a->nla_len < NLA_HDRLEN || a->nla_len > end - *p) return NULL;
+    *p += NLA_ALIGN(a->nla_len);
+    return a;
+}
+
+static int wifi_bars(int32_t mbm) {
+    return mbm >= -5500 ? 4 : mbm >= -6700 ? 3 : mbm >= -7500 ? 2 : 1;
+}
+
+// One recv() of a GET_SCAN dump; the associated BSS sets *bars.
+// 1 = dump finished, 0 = more to come, -1 = error reply or garbage.
+static int wifi_msgs(char *b, int n, int *bars) {
+    for (int off = 0; off < n; ) {
+        struct nlmsghdr *h = (struct nlmsghdr *)(b + off);
+        if (n - off < NLMSG_HDRLEN || (int)h->nlmsg_len < NLMSG_HDRLEN ||
+            (int)h->nlmsg_len > n - off) return -1;
+        if (h->nlmsg_type == NLMSG_DONE) return 1;
+        if (h->nlmsg_type == NLMSG_ERROR) return -1;
+        char *p = (char *)h + NLMSG_HDRLEN + GENL_HDRLEN, *end = (char *)h + h->nlmsg_len;
+        for (struct nlattr *a; (a = nla_next(&p, end)); ) {
+            if ((a->nla_type & NLA_TYPE_MASK) != NL80211_ATTR_BSS) continue;
+            char *q = (char *)a + NLA_HDRLEN, *qend = (char *)a + a->nla_len;
+            uint32_t status = NL80211_BSS_STATUS_AUTHENTICATED;
+            int32_t mbm = 0;
+            for (struct nlattr *c; (c = nla_next(&q, qend)); ) {
+                int ty = c->nla_type & NLA_TYPE_MASK;
+                if (ty == NL80211_BSS_STATUS) memcpy(&status, (char *)c + NLA_HDRLEN, 4);
+                if (ty == NL80211_BSS_SIGNAL_MBM) memcpy(&mbm, (char *)c + NLA_HDRLEN, 4);
+            }
+            if (status == NL80211_BSS_STATUS_ASSOCIATED) *bars = wifi_bars(mbm);
+        }
+        off += NLMSG_ALIGN(h->nlmsg_len);
+    }
+    return 0;
+}
+
+static int nl_send(int type, int cmd, int flags, int attr, const void *d, int len) {
+    struct { struct nlmsghdr n; struct genlmsghdr g; struct nlattr a; char d[8]; } r;
+    memset(&r, 0, sizeof r);
+    r.n.nlmsg_len = (uint32_t)(NLMSG_HDRLEN + GENL_HDRLEN + NLA_HDRLEN + len);
+    r.n.nlmsg_type = (uint16_t)type;
+    r.n.nlmsg_flags = (uint16_t)(NLM_F_REQUEST | flags);
+    r.g.cmd = (uint8_t)cmd;
+    r.a.nla_type = (uint16_t)attr;
+    r.a.nla_len = (uint16_t)(NLA_HDRLEN + len);
+    memcpy(r.d, d, (size_t)len);
+    return send(nlfd, &r, r.n.nlmsg_len, 0) == (ssize_t)r.n.nlmsg_len ? 0 : -1;
+}
+
+static void nl_close(void) {
+    if (nlfd >= 0) close(nlfd);
+    nlfd = -1;
+}
+
+static int nl_open(void) {
+    nlfd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_GENERIC);
+    if (nlfd < 0) return -1;
+    struct timeval tv = { 0, 500000 };          // a stuck driver must not freeze the tabs
+    setsockopt(nlfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    nlfam = 0;
+    if (!nl_send(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 0, CTRL_ATTR_FAMILY_NAME, "nl80211", 8)) {
+        int n = (int)recv(nlfd, nlbuf, sizeof nlbuf, 0);
+        if (n >= (int)(NLMSG_HDRLEN + GENL_HDRLEN) && ((struct nlmsghdr *)nlbuf)->nlmsg_type == GENL_ID_CTRL) {
+            char *p = nlbuf + NLMSG_HDRLEN + GENL_HDRLEN;
+            for (struct nlattr *a; (a = nla_next(&p, nlbuf + n)); )
+                if ((a->nla_type & NLA_TYPE_MASK) == CTRL_ATTR_FAMILY_ID) {
+                    uint16_t id;
+                    memcpy(&id, (char *)a + NLA_HDRLEN, 2);
+                    nlfam = id;
+                }
+        }
+    }
+    if (!nlfam) { nl_close(); return -1; }
+    return 0;
+}
+
+static int wifi_read(void) {
+    uint32_t idx = if_nametoindex(WLANIF);
+    if (!idx || (nlfd < 0 && nl_open())) return 0;
+    int bars = 0, r = -1;
+    if (!nl_send(nlfam, NL80211_CMD_GET_SCAN, NLM_F_DUMP, NL80211_ATTR_IFINDEX, &idx, 4)) {
+        do {
+            int n = (int)recv(nlfd, nlbuf, sizeof nlbuf, 0);
+            r = n > 0 ? wifi_msgs(nlbuf, n, &bars) : -1;
+        } while (r == 0);
+    }
+    if (r < 0) nl_close();                      // next read starts clean: stale replies, family id
+    return bars;
+}
+
+static void put_wifi(void) {
+    // nf-md-wifi_strength_off_outline, _1, _2, _3, _4
+    static const char *const glyph[] = { "\U000F092E", "\U000F091F", "\U000F0922", "\U000F0925", "\U000F0928" };
+    col(wifibars ? FG("#94e2d5") : FG("#f38ba8"));
+    sym(glyph[wifibars]);
+    col(NULL); put(" ");
+}
+
 static void render(long cpu, long rxr, long txr) {
     olen = 0; inspan = 0;
     put_limits();
     pad(cpu < 0 ? 1 : 3 - digits(cpu));
     col(cpu >= 70 ? FG("#f38ba8") : FG("#89b4fa"));
-    put("");
+    sym("");
     if (cpu < 0) put("--"); else putnum(cpu, 0);
     put("%"); col(NULL); put(" ");
     pad(2 - ratewidth(rxr));
@@ -270,7 +458,7 @@ static void render(long cpu, long rxr, long txr) {
         int crit = dis && cap < 15;             // red background up to the end of the line
         col(crit ? "<span foreground='#1e1e2e' background='#f38ba8'>"
                  : dis && cap <= 30 ? FG("#fab387") : FG("#a6e3a1"));
-        put(dis ? "󰁹" : "󰂄");
+        sym(dis ? "󰁹" : "󰂄");
         putnum(cap, 0); put("%");
         // Remaining time rounded to 5 min so the display does not twitch
         // every tick. If a value is missing the field is left blank.
@@ -289,6 +477,8 @@ static void render(long cpu, long rxr, long txr) {
         }
         col(NULL); put(" ");
     }
+    put_wifi();
+    put_volume();
     time_t t = time(NULL); struct tm tm;
     localtime_r(&t, &tm);
     put(" "); putnum(tm.tm_hour, 2);
@@ -617,7 +807,7 @@ int main(int argc, char **argv) {
         // otherwise replies and events get mixed up in the same stream
         int cmd = ipc_open(), ev = cmd >= 0 ? ipc_open() : -1;
         if (ev >= 0) {
-            free(ipc_call(ev, 2, "[\"window\",\"workspace\"]"));
+            free(ipc_call(ev, 2, "[\"window\",\"workspace\",\"tick\"]"));
             tidy(cmd, NULL, 0, 1);
         }
         struct timespec next;
@@ -625,6 +815,8 @@ int main(int argc, char **argv) {
         next.tv_sec += secs;
         cpu_totals(&pbusy, &pidle);
         net_totals(&prx, &ptx);
+        vol_refresh();
+        wifibars = wifi_read();
         for (long cpu = -1, rxr = -1, txr = -1;; ) {
             render(cpu, rxr, txr);
             if (emit(1)) return 1;                          // swaybar gone -> done
@@ -647,7 +839,10 @@ int main(int argc, char **argv) {
                         double con = jnget(jget(r, "container"), "id");
                         char change[16] = "";
                         if (ch) snprintf(change, sizeof change, "%s", ch);
+                        const char *tick = jsget(r, "payload");
+                        int volkey = t == 0x80000007u && tick && !strcmp(tick, "volume");
                         free(m);
+                        if (volkey) vol_refresh();
                         if (t == 0x80000003u || (t == 0x80000000u &&
                             (!strcmp(change, "init") || !strcmp(change, "empty"))))
                             tidy(cmd, change, con, 0);
@@ -656,6 +851,8 @@ int main(int argc, char **argv) {
                 }
             }
             next.tv_sec += secs;
+            if (vol < 0) vol_refresh();                     // at login WirePlumber may not be up yet
+            wifibars = wifi_read();
             cpu_totals(&busy, &idle);
             cpu = cpu_pct(busy, idle, pbusy, pidle);
             pbusy = busy; pidle = idle;
@@ -699,6 +896,8 @@ int main(int argc, char **argv) {
         ssize_t ig = write(fd, out, (size_t)olen); (void)ig;
         close(fd);
     }
+    vol_refresh();
+    wifibars = wifi_read();
     render(cpu, rxr, txr);
     return emit(0);
 }
