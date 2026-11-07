@@ -54,6 +54,14 @@ static void test_cpu(void) {
     CHECK_EQ(cpu_pct(200, 50, 100, 100), 100);  // idle went backwards: clamp
 }
 
+static void test_mem(void) {
+    CHECK_EQ(mem_pct("MemTotal:        8000000 kB\nMemFree:          200000 kB\n"
+                     "MemAvailable:     800000 kB\n"), 90);
+    CHECK_EQ(mem_pct("MemTotal:        8000000 kB\nMemFree:          200000 kB\n"), -1);
+    CHECK_EQ(mem_pct("MemTotal: 0 kB\nMemAvailable: 0 kB\n"), -1);
+    CHECK_EQ(mem_pct("MemTotal: 100 kB\nMemAvailable: 200 kB\n"), -1);
+}
+
 static void test_skip_if(void) {
     CHECK(skip_if("lo", 2));
     CHECK(skip_if("veth1a2b", 8));
@@ -256,6 +264,7 @@ int main(void) {
     test_numbers();
     test_rates();
     test_cpu();
+    test_mem();
     test_skip_if();
     test_smooth_power();
     test_label();

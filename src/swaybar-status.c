@@ -1,6 +1,6 @@
 
 // swaybar-status: the kiosk's single bar -- tabs on the left; on the right
-// Claude (weekly limit), CPU, network, battery, WLAN, volume, clock.
+// Claude (weekly limit), CPU, RAM, network, battery, WLAN, volume, clock.
 // Output is Pango markup (bar { pango_markup enabled }). Called tmux-status
 // until 2026-11-01.
 // build: make && make install   (see README)
@@ -193,6 +193,16 @@ static long cpu_pct(unsigned long busy, unsigned long idle,
     if (di < 0) di = 0;
     if (di > dt) di = dt;                                   // guard against counter resets
     return 100 - di * 100 / dt;
+}
+
+// RAM in use from a /proc/meminfo buffer, -1 if unparsable. MemAvailable, not
+// MemFree: page cache is reclaimable and would otherwise read as ~95 % all day.
+static long mem_pct(const char *b) {
+    const char *t = strstr(b, "MemTotal:"), *a = strstr(b, "MemAvailable:");
+    if (!t || !a) return -1;
+    unsigned long tot = nextul(&t), av = nextul(&a);
+    if (!tot || av > tot) return -1;
+    return (long)((tot - av) * 100 / tot);
 }
 
 // Remaining time from a weighted average of the last 12 power samples
@@ -438,6 +448,15 @@ static void render(long cpu, long rxr, long txr) {
     // 4 and 7 px above the digits. 12pt and text size match the digits' height.
     put("<span font_size='12pt'></span>");
     if (cpu < 0) put("--"); else putnum(cpu, 0);
+    put("%"); col(NULL); put(" ");
+    char mi[512];
+    long mem = slurp("/proc/meminfo", mi, sizeof mi) ? mem_pct(mi) : -1;
+    pad(mem < 0 ? 1 : 3 - digits(mem));
+    col(mem >= 90 ? FG("#f38ba8") : FG("#cba6f7"));
+    // nf-md-chip: a flat bar with pins reads as a RAM module; nf-md-memory is a
+    // square chip that looks just like the CPU icon. 12pt for the same reason as CPU.
+    put("<span font_size='12pt'>\U000F061A</span>");
+    if (mem < 0) put("--"); else putnum(mem, 0);
     put("%"); col(NULL); put(" ");
     pad(2 - ratewidth(rxr));
     col(FG("#94e2d5")); put("↓"); putrate(rxr);

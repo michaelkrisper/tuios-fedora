@@ -29,7 +29,7 @@ noticeably on a battery this old. What is left boots in about 15 seconds into
 
 | | |
 |---|---|
-| `src/swaybar-status.c` | the one bar: tabs (one window per workspace, named after its title), optional Claude weekly limit, CPU, network, battery, WLAN, volume, clock — dependency-free C |
+| `src/swaybar-status.c` | the one bar: tabs (one window per workspace, named after its title), optional Claude weekly limit, CPU, RAM, network, battery, WLAN, volume, clock — dependency-free C |
 | `src/specialkeysd.c` | brightness, keyboard backlight, idle dimming, and the Exposé/Dashboard keys |
 | `home/config/sway/config` | bar with tabs + status, foot server, touchpad |
 | `home/config/tty-claude.sh` | tty1 autostart: sway, then Claude Code in the first terminal |
@@ -62,6 +62,8 @@ statusLine command, and it also keeps the window title current inside Claude Cod
 
 * **CPU** — busy percentage over the last interval, from `/proc/stat`. Turns
   red at 70 %.
+* **RAM** — share in use, `MemTotal - MemAvailable` from `/proc/meminfo`, so
+  reclaimable page cache counts as free. Turns red at 90 %.
 * **Network** — average throughput over the last interval in decimal Mbit/s,
   from `/proc/net/dev`. Loopback and virtual interfaces (`veth*`, `docker*`,
   `podman*`, `br-*`, …) are skipped so bridged traffic is not counted twice.
