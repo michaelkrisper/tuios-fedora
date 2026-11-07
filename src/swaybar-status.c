@@ -310,13 +310,12 @@ static void vol_refresh(void) {
 static void put_volume(void) {
     if (vol < 0) return;
     int silent = volmute || vol == 0;
-    col(silent ? FG("#9399b2") : FG("#cba6f7"));
+    col(silent ? FG("#6c7086") : FG("#bac2de"));
     // Crossed out, then 0, 1, 2, 3 waves: nf-md-volume_off, _low, _medium, _high.
-    // Three waves only exist as nf-fa-volume_up, drawn smaller: 18pt matches the
-    // others' 14pt. The letter spacing takes back its extra width so the status does
-    // not shift; the taller line is why the sway config fixes the bar height.
-    if (!silent && vol > 70) put("<span font_size='18pt' letter_spacing='-2816'></span>");
-    else sym(silent ? "\U000F0581" : vol <= 10 ? "\U000F057F" : vol <= 40 ? "\U000F0580" : "\U000F057E");
+    // Three waves only exist as nf-fa-volume_up; at 14pt it is as wide and as tall
+    // as the md glyphs.
+    sym(silent ? "\U000F0581" : vol <= 10 ? "\U000F057F" : vol <= 40 ? "\U000F0580"
+        : vol <= 70 ? "\U000F057E" : "\uF028");
     col(NULL);
 }
 
@@ -435,7 +434,9 @@ static void render(long cpu, long rxr, long txr) {
     put_limits();
     pad(cpu < 0 ? 1 : 3 - digits(cpu));
     col(cpu >= 70 ? FG("#f38ba8") : FG("#89b4fa"));
-    sym("");
+    // CPU and battery fill more of the em than the other icons: at 14pt they stand
+    // 4 and 7 px above the digits. 12pt and text size match the digits' height.
+    put("<span font_size='12pt'></span>");
     if (cpu < 0) put("--"); else putnum(cpu, 0);
     put("%"); col(NULL); put(" ");
     pad(2 - ratewidth(rxr));
@@ -458,7 +459,7 @@ static void render(long cpu, long rxr, long txr) {
         int crit = dis && cap < 15;             // red background up to the end of the line
         col(crit ? "<span foreground='#1e1e2e' background='#f38ba8'>"
                  : dis && cap <= 30 ? FG("#fab387") : FG("#a6e3a1"));
-        sym(dis ? "󰁹" : "󰂄");
+        put(dis ? "󰁹" : "󰂄");
         putnum(cap, 0); put("%");
         // Remaining time rounded to 5 min so the display does not twitch
         // every tick. If a value is missing the field is left blank.

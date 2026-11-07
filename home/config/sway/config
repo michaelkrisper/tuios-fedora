@@ -84,7 +84,7 @@ client.unfocused        #181825 #181825   #a6adc8 #181825
 # with no room for the status.
 bar {
     font pango:Cascadia Mono NF 10
-    # Fixed height: the larger "loud" icon must not resize every window.
+    # Fixed height, independent of the icon sizes in the status.
     height 24
     position bottom
     status_command ~/.local/bin/swaybar-status --loop 5

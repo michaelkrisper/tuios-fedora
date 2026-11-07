@@ -178,25 +178,25 @@ static void test_volume(void) {
 #define ICON(colour, size, glyph) \
     "<span foreground='" colour "'><span font_size='" size "'>" glyph "</span></span>"
     static const struct { long v; const char *want; } levels[] = {
-        { 0,   ICON("#9399b2", "14pt", "\U000F0581") },     // silent, same as muted
-        { 1,   ICON("#cba6f7", "14pt", "\U000F057F") },
-        { 10,  ICON("#cba6f7", "14pt", "\U000F057F") },
-        { 20,  ICON("#cba6f7", "14pt", "\U000F0580") },
-        { 40,  ICON("#cba6f7", "14pt", "\U000F0580") },
-        { 50,  ICON("#cba6f7", "14pt", "\U000F057E") },
-        { 70,  ICON("#cba6f7", "14pt", "\U000F057E") },
-        { 80,  ICON("#cba6f7", "18pt' letter_spacing='-2816", "") },
-        { 100, ICON("#cba6f7", "18pt' letter_spacing='-2816", "") },
-        { 150, ICON("#cba6f7", "18pt' letter_spacing='-2816", "") },
+        { 0,   ICON("#6c7086", "14pt", "\U000F0581") },     // silent, same as muted
+        { 1,   ICON("#bac2de", "14pt", "\U000F057F") },
+        { 10,  ICON("#bac2de", "14pt", "\U000F057F") },
+        { 20,  ICON("#bac2de", "14pt", "\U000F0580") },
+        { 40,  ICON("#bac2de", "14pt", "\U000F0580") },
+        { 50,  ICON("#bac2de", "14pt", "\U000F057E") },
+        { 70,  ICON("#bac2de", "14pt", "\U000F057E") },
+        { 80,  ICON("#bac2de", "14pt", "\uF028") },
+        { 100, ICON("#bac2de", "14pt", "\uF028") },
+        { 150, ICON("#bac2de", "14pt", "\uF028") },
     };
     for (size_t i = 0; i < sizeof levels / sizeof *levels; i++) {
         olen = 0; vol = levels[i].v; put_volume();
         CHECK_STR(rendered(), levels[i].want);
     }
     olen = 0; vol = 60; volmute = 1; put_volume();
-    CHECK_STR(rendered(), ICON("#9399b2", "14pt", "\U000F0581"));
+    CHECK_STR(rendered(), ICON("#6c7086", "14pt", "\U000F0581"));
     olen = 0; vol = 90; put_volume();                       // muted beats loud
-    CHECK_STR(rendered(), ICON("#9399b2", "14pt", "\U000F0581"));
+    CHECK_STR(rendered(), ICON("#6c7086", "14pt", "\U000F0581"));
     vol = -1; volmute = 0;
 }
 
