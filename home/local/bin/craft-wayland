@@ -1,0 +1,7 @@
+#!/bin/sh
+# Some Craft apps (winit) pick XWayland under Wayland, for drag and drop; at
+# sway scale 2 that is pixelated. <APP>_WAYLAND=1 forces native Wayland.
+# Called through symlinks named after the app (gridcraft -> craft-wayland).
+app=$(basename "$0")
+var=$(printf '%s_WAYLAND' "$app" | tr '[:lower:]' '[:upper:]')
+exec env "$var=1" "/usr/bin/$app" "$@"
