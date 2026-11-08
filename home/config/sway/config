@@ -12,9 +12,9 @@ set $browser ~/.local/bin/google-chrome-stable --ozone-platform-hint=auto
 
 # Windows are stacked as tabs instead of side by side: each one is full size.
 workspace_layout tabbed
-# 2 px frame around every window. Only visible in tiled mode (Ctrl+Fn+F3):
+# 1 px frame around every window. Only visible in tiled mode (Ctrl+Fn+F3):
 # hide_edge_borders smart drops it while a workspace holds a single window.
-default_border pixel 2
+default_border pixel 1
 # --i3 hides the tab title bar while there is only one window in the tabbed
 # container -- a single foot looks exactly like it did under cage.
 hide_edge_borders --i3 smart
