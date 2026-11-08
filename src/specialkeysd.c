@@ -81,10 +81,11 @@ struct dimmer {
 // Who owns sway; root cannot simply use that user's socket.
 static uid_t u_uid; static gid_t u_gid; static char *u_name, *u_home;
 
-// F3 switches to the next tab (like Alt-Tab), F4 opens a terminal.
+// F3 switches to the next tab (like Alt-Tab, via swaybar-status's tick "next"),
+// F4 opens a terminal.
 // The socket name contains sway's PID, hence the glob; without a running sway
 // nothing happens.
-static void sway_do(const char *cmd) {
+static void sway_do(const char *cmd, int tick) {
     if (!u_home) return;
     pid_t p = fork();
     if (p != 0) return;                      // don't wait, SIGCHLD is ignored
@@ -94,7 +95,8 @@ static void sway_do(const char *cmd) {
     if (glob(pat, 0, NULL, &g) || g.gl_pathc == 0) _exit(1);
     setenv("SWAYSOCK", g.gl_pathv[g.gl_pathc - 1], 1);
     setenv("HOME", u_home, 1);
-    execlp("swaymsg", "swaymsg", cmd, (char *)NULL);
+    if (tick) execlp("swaymsg", "swaymsg", "-t", "send_tick", cmd, (char *)NULL);
+    else execlp("swaymsg", "swaymsg", cmd, (char *)NULL);
     _exit(127);
 }
 
@@ -256,8 +258,8 @@ int main(int argc, char **argv) {
                 long t = nowms();
                 if (t - lastwin >= STEPMS) {
                     lastwin = t;
-                    if (nextwin > 0) sway_do("workspace next_on_output");
-                    else sway_do("exec footclient");
+                    if (nextwin > 0) sway_do("next", 1);   // swaybar-status: tab or tiled window
+                    else sway_do("exec footclient", 0);
                 }
             }
             if (dir)  step(&disp, dir);
