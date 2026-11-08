@@ -32,8 +32,8 @@ make install-daemon   # specialkeysd -> /usr/local/sbin + unit, needs sudo
   renamed `N:<title>` (bar strips the number). Key bindings in the sway config talk to it
   through `swaymsg -t send_tick <word>` (`next`, `prev`, `split`, `volume`). Output is
   Pango markup; it writes a line only when the output changed. The Claude weekly limit
-  appears while `$XDG_RUNTIME_DIR/claude-bar/limits` exists (written by
-  `statusline --bar` from the claude-statusline repo; inotify triggers a redraw).
+  appears while `$XDG_RUNTIME_DIR/claude-bar/limits` exists (written every 5 min
+  by `home/local/bin/claude-usage` via `claude-usage.timer`; inotify triggers a redraw).
 - `src/specialkeysd.c`: root daemon reading `/dev/input`, writing `/sys/class/backlight`,
   calling `swaymsg` as the desktop user (socket found by globbing
   `/run/user/UID/sway-ipc.*.sock`). Anything that types without a keyboard can wake it by
