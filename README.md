@@ -59,9 +59,12 @@ The window title is the working directory (bash `PROMPT_COMMAND`). The Claude
 weekly limit appears only while `$XDG_RUNTIME_DIR/claude-bar/limits` exists;
 inotify on that directory redraws immediately. `claude-usage.timer` (user unit,
 every 5 min) writes it: `home/local/bin/claude-usage` asks the account-wide usage
-endpoint with Claude Code's OAuth token and renders the result through
-`statusline --bar` from claude-statusline (gauge, percent, `→ ~N%` projection to
-the weekly reset from the second day on). Enable with
+endpoint with Claude Code's OAuth token, logs each reading to
+`~/.local/state/claude-usage/history.tsv` and renders gauge, percent and
+`→ ~N%`, the projection to the weekly reset. The projection blends this week's
+pace with the median final usage of past logged weeks, weighted towards the
+history on the first day; without logged weeks it is the pace alone, marked `?`
+below one day. Enable with
 `systemctl --user enable --now claude-usage.timer`.
 
 * **CPU** — busy percentage over the last interval, from `/proc/stat`. Turns

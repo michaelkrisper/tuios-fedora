@@ -38,7 +38,7 @@ jobs:
           shellcheck --version
           shellcheck home/bash_profile home/bashrc home/config/tty-claude.sh \
             home/local/bin/bl home/local/bin/bootmode home/local/bin/google-chrome-stable \
-            home/local/bin/intkbd home/local/bin/kde home/local/bin/craft-wayland \
+            home/local/bin/intkbd home/local/bin/kde home/local/bin/craft-wayland home/local/bin/claude-usage \
             system/usr/lib/systemd/system-sleep/* system/usr/local/bin/*.sh
       - name: Python syntax
         run: python3 -m py_compile home/local/bin/resume-check
