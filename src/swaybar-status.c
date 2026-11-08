@@ -755,11 +755,11 @@ static void cmd_add(const char *s) {
     }
 }
 
-// Tiled mode (Ctrl+Fn+F3): all windows on one workspace, laid out by
-// autotiling -- whichever window has focus gets split along its longer side,
-// so the next window opens beside it (wide) or below it (tall). sway itself
-// only knows manual splith/splitv. The workspace button then lists every
-// window, the active one highlighted (swaybar renders Pango markup there too).
+// Tiled mode (Ctrl+Fn+F3): all windows on one workspace as a grid of equal
+// tiles -- ceil(sqrt(n)) columns, a short last row gets wider tiles. sway has
+// no automatic layout, so grid() rebuilds the tree on every new or closed
+// window. The workspace button then lists every window, the active one
+// highlighted (swaybar renders Pango markup there too).
 // Lost on restart: swaybar-status starts in tab mode and spreads the windows.
 static int tiled;
 
@@ -786,26 +786,59 @@ static int curws(int *ws, int nws) {
     return -1;
 }
 
-// split the focused window along its longer side, unless its parent already
-// runs that way (otherwise every focus change would nest another container)
-static void autotile(int ws) {
-    int lv[MAXLEAF], pr[MAXLEAF], n = 0;
-    inorder(ws, -1, lv, pr, &n);
-    for (int k = 0; k < n; k++) {
-        if (!isfocused(lv[k])) continue;
-        int r = jget(lv[k], "rect");
-        int wide = jnget(r, "width") > jnget(r, "height");
-        const char *pl = jsget(pr[k], "layout");
-        if (pl && strcmp(pl, wide ? "splith" : "splitv") == 0) return;
-        char line[96];
-        snprintf(line, sizeof line, "[con_id=%.0f] split %s", jnget(lv[k], "id"), wide ? "h" : "v");
-        cmd_add(line);
-        return;
+// Rebuild as a fresh grid on a new workspace (moving to a new workspace
+// leaves the old nested containers behind, sway drops them once empty):
+// the first window of each row stacked vertically, then the rest of each row
+// placed beside its head. "move container to mark" inserts right after the
+// marked window, inside its parent. keep: window to focus, <0 = current.
+static void grid(int fd, double keep) {
+    char *tree = ipc_call(fd, 4, "");
+    if (!tree) return;
+    int ws[MAXWS], nws = workspaces(jroot(tree), ws), top = 0, n = 0;
+    double id[MAXLEAF];
+    for (int i = 0; i < nws; i++) {
+        if (jnget(ws[i], "num") > top) top = (int)jnget(ws[i], "num");
+        int lv[MAXLEAF], pr[MAXLEAF], m = 0;
+        inorder(ws[i], -1, lv, pr, &m);
+        for (int k = 0; k < m && n < MAXLEAF; k++) {
+            if (keep < 0 && isfocused(lv[k])) keep = jnget(lv[k], "id");
+            id[n++] = jnget(lv[k], "id");
+        }
     }
+    free(tree);
+    if (n < 2) return;
+    int c = 1;
+    while (c * c < n) c++;
+    char line[160];
+    cmdlen = 0; cmdbuf[0] = 0;
+    snprintf(line, sizeof line, "[con_id=%.0f] move container to workspace number %d; [con_id=%.0f] layout splitv",
+             id[0], top + 1, id[0]);
+    cmd_add(line);
+    for (int h = c; h < n; h += c) {
+        snprintf(line, sizeof line, "[con_id=%.0f] mark _grid; [con_id=%.0f] move container to mark _grid",
+                 id[h - c], id[h]);
+        cmd_add(line);
+    }
+    for (int h = 0; h < n; h += c) {
+        if (h + 1 < n && c > 1) {
+            snprintf(line, sizeof line, "[con_id=%.0f] split h", id[h]);
+            cmd_add(line);
+        }
+        for (int k = h + 1; k < h + c && k < n; k++) {
+            snprintf(line, sizeof line, "[con_id=%.0f] mark _grid; [con_id=%.0f] move container to mark _grid",
+                     id[k - 1], id[k]);
+            cmd_add(line);
+        }
+    }
+    snprintf(line, sizeof line, "unmark _grid; workspace number %d; [con_id=%.0f] focus", top + 1, keep);
+    cmd_add(line);
+    free(ipc_call(fd, 0, cmdbuf));
 }
 
 // change: "new"/"close"/... from the window event, NULL at startup
 static void tidy(int fd, const char *change, double con, int start) {
+    if (tiled && change && (!strcmp(change, "new") || !strcmp(change, "close")))
+        grid(fd, !strcmp(change, "new") ? con : -1);
     char *tree = ipc_call(fd, 4, "");
     if (!tree) return;
     int root = jroot(tree), ws[MAXWS], nws = workspaces(root, ws);
@@ -827,7 +860,6 @@ static void tidy(int fd, const char *change, double con, int start) {
             cmd_add(line);
         }
         int fl = jget(ws[i], "floating_nodes");
-        for (int k = 0; tiled && k < n; k++) if (isfocused(lv[k])) { autotile(ws[i]); break; }
         if (change && strcmp(change, "close") == 0 && n == 0 && nws > 1 &&
             jget(ws[i], "focused") >= 0 && jv[jget(ws[i], "focused")].n &&
             (fl < 0 || jv[fl].kid < 0))
@@ -875,42 +907,11 @@ static void tidy(int fd, const char *change, double con, int start) {
     free(tree);
 }
 
-// Tick "split": tab mode -> tiled gathers every window on the focused
-// workspace one by one, so autotiling places each; tiled -> tab mode spreads
-// them out like at startup.
+// Tick "split": tab mode <-> tiled grid; back to tabs spreads the windows out
+// like at startup.
 static void split(int fd) {
-    if (tiled) { tiled = 0; tidy(fd, NULL, 0, 1); return; }
-    tiled = 1;
-    double back = -1;
-    for (;;) {
-        char *tree = ipc_call(fd, 4, "");
-        if (!tree) return;
-        int ws[MAXWS], nws = workspaces(jroot(tree), ws), cur = curws(ws, nws);
-        if (cur < 0) { free(tree); return; }
-        int lv[MAXLEAF], pr[MAXLEAF], n = 0;
-        inorder(ws[cur], -1, lv, pr, &n);
-        for (int k = 0; k < n && back < 0; k++) if (isfocused(lv[k])) back = jnget(lv[k], "id");
-        double next = -1;
-        for (int i = 0; i < nws && next < 0; i++) {
-            if (i == cur) continue;
-            int ov[MAXLEAF], op[MAXLEAF], m = 0;
-            inorder(ws[i], -1, ov, op, &m);
-            if (m) next = jnget(ov[0], "id");
-        }
-        char line[256];
-        cmdlen = 0; cmdbuf[0] = 0;
-        if (next >= 0) {
-            autotile(ws[cur]);
-            snprintf(line, sizeof line, "[con_id=%.0f] move container to workspace number %d; [con_id=%.0f] focus",
-                     next, (int)jnget(ws[cur], "num"), next);
-        } else if (back >= 0) {
-            snprintf(line, sizeof line, "[con_id=%.0f] focus", back);
-        } else line[0] = 0;
-        if (line[0]) cmd_add(line);
-        if (cmdlen) free(ipc_call(fd, 0, cmdbuf));
-        free(tree);
-        if (next < 0) break;
-    }
+    tiled = !tiled;
+    if (tiled) grid(fd, -1); else tidy(fd, NULL, 0, 1);
     tidy(fd, "focus", 0, 0);
 }
 
