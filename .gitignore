@@ -3,3 +3,5 @@ specialkeysd
 test_swaybar_status
 test_specialkeysd
 *.tmp
+
+CLAUDE.local.md
