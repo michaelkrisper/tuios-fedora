@@ -1,17 +1,63 @@
 #!/bin/bash
 # Weekly Claude limit for the swaybar, run every 5 min by claude-usage.timer.
-# Asks the account-wide usage endpoint (so usage on other machines counts too)
-# and hands the numbers to `statusline --bar` from claude-statusline, which
-# writes $XDG_RUNTIME_DIR/claude-bar/limits incl. the end-of-week projection.
+# Asks the account-wide usage endpoint (so usage on other machines counts too),
+# logs every reading and writes $XDG_RUNTIME_DIR/claude-bar/limits as Pango:
+# gauge, percent, and the projected percent at the weekly reset.
 # The token is the one Claude Code keeps fresh; it is never refreshed here,
 # because refresh tokens rotate and that would log Claude Code out. Expired
 # token -> no update, the bar keeps the last value.
+#
+# Projection: used + rate * time left. The rate blends this week's pace
+# (used / elapsed) with the history prior (median final usage of past logged
+# weeks / 7 days); this week's weight is elapsed / (elapsed + 1 day), so on the
+# first day, when the daily rhythm still dominates the pace, the prior carries
+# it. Without logged weeks the pace alone is used from 1 h on, marked "?" below
+# one day.
 set -eo pipefail
+state=${XDG_STATE_HOME:-$HOME/.local/state}/claude-usage
+out=$XDG_RUNTIME_DIR/claude-bar
+mkdir -p "$state" "$out"
+hist=$state/history.tsv
+
 tok=$(jq -r .claudeAiOauth.accessToken ~/.claude/.credentials.json)
-printf 'Authorization: Bearer %s\n' "$tok" |
+read -r pct reset < <(printf 'Authorization: Bearer %s\n' "$tok" |
     curl -sSf -m 20 -H @- -H 'anthropic-beta: oauth-2025-04-20' \
         https://api.anthropic.com/api/oauth/usage |
-    jq -ce '.seven_day | select(.utilization != null) | {rate_limits: {seven_day: {
-        used_percentage: .utilization,
-        resets_at: (.resets_at | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601)}}}' |
-    ~/.claude/claude-statusline/statusline --bar
+    jq -re '.seven_day | select(.utilization != null) |
+        "\(.utilization) \(.resets_at | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601)"')
+now=$(date +%s)
+reset=$(( (reset + 30) / 60 * 60 ))   # the API jitters by fractions of a second
+echo "$now $pct $reset" >> "$hist"
+
+# keep 10 weeks
+awk -v cut=$((now - 70 * 86400)) '$1 >= cut' "$hist" > "$hist.tmp" && mv "$hist.tmp" "$hist"
+
+awk -v now="$now" -v used="$pct" -v reset="$reset" '
+    $3 < reset { last[$3] = $1; fin[$3] = $2 }
+    END {
+        day = 86400; week = 7 * day
+        n = 0
+        for (r in fin) if (r - last[r] < 6 * 3600) v[++n] = fin[r]   # window seen near its end
+        for (i = 2; i <= n; i++) for (j = i; j > 1 && v[j-1] > v[j]; j--) { t = v[j]; v[j] = v[j-1]; v[j-1] = t }
+        prior = n ? (n % 2 ? v[(n+1)/2] : (v[n/2] + v[n/2+1]) / 2) : -1
+
+        p = int(used + 0.5); if (p > 100) p = 100
+        col = p >= 85 ? "#f38ba8" : p >= 60 ? "#f9e2af" : "#a6e3a1"
+        split("○ ◔ ◑ ◕ ●", g, " ")
+        s = sprintf("<b><span foreground=\x27%s\x27>%s</span> %d%%", col, g[int(p / 25 + 0.5) + 1], int(used + 0.5))
+
+        e = now - (reset - week); left = reset - now; mark = ""
+        if (e > 0 && left > 0) {
+            if (prior >= 0) {
+                w = e / (e + day); rate = w * used / e + (1 - w) * prior / week
+            } else if (e >= 3600) {
+                rate = used / e; if (e < day) mark = "?"
+            } else rate = -1
+            if (rate >= 0) {
+                proj = int(used + rate * left + 0.5)
+                s = s sprintf(proj >= 100 ? " → ~<span foreground=\x27#f38ba8\x27>%d%%</span>%s" : " → ~%d%%%s", proj, mark)
+            }
+        }
+        print s "</b>"
+    }' "$hist" > "$out/limits.tmp"
+mv "$out/limits.tmp" "$out/limits"
