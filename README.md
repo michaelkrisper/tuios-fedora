@@ -1,6 +1,7 @@
 # tuios-fedora
 
 [![CI](https://github.com/michaelkrisper/tuios-fedora/actions/workflows/ci.yml/badge.svg)](https://github.com/michaelkrisper/tuios-fedora/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/michaelkrisper/tuios-fedora?sort=semver&label=version)](https://github.com/michaelkrisper/tuios-fedora/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Language: C](https://img.shields.io/badge/language-C-555.svg)](src/)
 [![Fedora 44](https://img.shields.io/badge/Fedora-44-51a2da.svg)](SETUP.md)
@@ -142,6 +143,10 @@ shellcheck home/local/bin/bl ...           # all shell scripts, see .github/work
 The tests include the program sources directly, so they can reach the static
 helpers (formatting, the sway JSON parser and tree walk, the brightness step
 table) without changing the programs.
+
+CI tags every merge to `main` with the next patch version; bundled releases
+with release notes come from the Release workflow. Changes go through issues
+and pull requests, see [CONTRIBUTING](CONTRIBUTING.md).
 
 ## License
 
