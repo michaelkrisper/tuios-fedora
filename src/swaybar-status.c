@@ -755,6 +755,55 @@ static void cmd_add(const char *s) {
     }
 }
 
+// Tiled mode (Ctrl+Fn+F3): all windows on one workspace, laid out by
+// autotiling -- whichever window has focus gets split along its longer side,
+// so the next window opens beside it (wide) or below it (tall). sway itself
+// only knows manual splith/splitv. The workspace button then lists every
+// window, the active one highlighted (swaybar renders Pango markup there too).
+// Lost on restart: swaybar-status starts in tab mode and spreads the windows.
+static int tiled;
+
+// tiling windows in screen order, each with its parent container
+static void inorder(int node, int parent, int *out, int *par, int *n) {
+    int nodes = jget(node, "nodes");
+    if (nodes < 0 || jv[nodes].kid < 0) {
+        if (jget(node, "pid") >= 0 && *n < MAXLEAF) { par[*n] = parent; out[(*n)++] = node; }
+        return;
+    }
+    for (int c = jv[nodes].kid; c >= 0; c = jv[c].next) inorder(c, node, out, par, n);
+}
+
+static int isfocused(int node) { int f = jget(node, "focused"); return f >= 0 && jv[f].n; }
+
+// workspace holding the focused window (or the focused empty workspace)
+static int curws(int *ws, int nws) {
+    for (int i = 0; i < nws; i++) {
+        if (isfocused(ws[i])) return i;
+        int lv[MAXLEAF], pr[MAXLEAF], n = 0;
+        inorder(ws[i], -1, lv, pr, &n);
+        for (int k = 0; k < n; k++) if (isfocused(lv[k])) return i;
+    }
+    return -1;
+}
+
+// split the focused window along its longer side, unless its parent already
+// runs that way (otherwise every focus change would nest another container)
+static void autotile(int ws) {
+    int lv[MAXLEAF], pr[MAXLEAF], n = 0;
+    inorder(ws, -1, lv, pr, &n);
+    for (int k = 0; k < n; k++) {
+        if (!isfocused(lv[k])) continue;
+        int r = jget(lv[k], "rect");
+        int wide = jnget(r, "width") > jnget(r, "height");
+        const char *pl = jsget(pr[k], "layout");
+        if (pl && strcmp(pl, wide ? "splith" : "splitv") == 0) return;
+        char line[96];
+        snprintf(line, sizeof line, "[con_id=%.0f] split %s", jnget(lv[k], "id"), wide ? "h" : "v");
+        cmd_add(line);
+        return;
+    }
+}
+
 // change: "new"/"close"/... from the window event, NULL at startup
 static void tidy(int fd, const char *change, double con, int start) {
     char *tree = ipc_call(fd, 4, "");
@@ -769,7 +818,7 @@ static void tidy(int fd, const char *change, double con, int start) {
         leaves(ws[i], lv, &n);
         for (int k = 0; k < n; k++) {
             int moveit = start ? k > 0
-                       : change && strcmp(change, "new") == 0 && n > 1 && jnget(lv[k], "id") == con;
+                       : !tiled && change && strcmp(change, "new") == 0 && n > 1 && jnget(lv[k], "id") == con;
             if (!moveit) continue;
             top++;
             int l = snprintf(line, sizeof line, "[con_id=%.0f] move container to workspace number %d",
@@ -778,6 +827,7 @@ static void tidy(int fd, const char *change, double con, int start) {
             cmd_add(line);
         }
         int fl = jget(ws[i], "floating_nodes");
+        for (int k = 0; tiled && k < n; k++) if (isfocused(lv[k])) { autotile(ws[i]); break; }
         if (change && strcmp(change, "close") == 0 && n == 0 && nws > 1 &&
             jget(ws[i], "focused") >= 0 && jv[jget(ws[i], "focused")].n &&
             (fl < 0 || jv[fl].kid < 0))
@@ -794,57 +844,93 @@ static void tidy(int fd, const char *change, double con, int start) {
         int lv[MAXLEAF], n = 0;
         leaves(ws[i], lv, &n);
         if (!n) continue;
-        char lab[200], want[256];
-        label(lab, sizeof lab, jsget(lv[0], "name"));
-        snprintf(want, sizeof want, "%d:%s", (int)jnget(ws[i], "num"), lab);
+        char lab[200], want[4096];
+        int wl = snprintf(want, sizeof want, "%d:", (int)jnget(ws[i], "num"));
+        if (tiled && n > 1) {
+            int ord[MAXLEAF], pr[MAXLEAF], m = 0;
+            inorder(ws[i], -1, ord, pr, &m);
+            for (int k = 0; k < m && wl < (int)sizeof want - 400; k++) {
+                char esc[600]; int e = 0;
+                label(lab, sizeof lab, jsget(ord[k], "name"));
+                for (const char *q = lab; *q && e < (int)sizeof esc - 6; q++)
+                    e += *q == '&' ? sprintf(esc + e, "&amp;") : *q == '<' ? sprintf(esc + e, "&lt;")
+                       : *q == '>' ? sprintf(esc + e, "&gt;") : (esc[e] = *q, 1);
+                esc[e] = 0;
+                wl += snprintf(want + wl, sizeof want - (size_t)wl, isfocused(ord[k])
+                    ? "<span background='#89b4fa' foreground='#1e1e2e'> %s </span>"
+                    : "<span background='#11111b' foreground='#a6adc8'> %s </span>", esc);
+            }
+        } else {
+            label(lab, sizeof lab, jsget(lv[0], "name"));
+            snprintf(want + wl, sizeof want - (size_t)wl, "%s", lab);
+        }
         const char *have = jsget(ws[i], "name");
         if (have && strcmp(have, want) != 0) {
-            snprintf(line, sizeof line, "rename workspace \"%s\" to \"%s\"", have, want);
-            cmd_add(line);
+            char rn[8400];
+            snprintf(rn, sizeof rn, "rename workspace \"%s\" to \"%s\"", have, want);
+            cmd_add(rn);
         }
     }
     if (cmdlen) free(ipc_call(fd, 0, cmdbuf));
     free(tree);
 }
 
-// Tick "split" (Ctrl+Fn+F3): toggles between tabs and side by side. Side by
-// side gathers every window on the focused workspace (splith), back to tabs
-// spreads them out again exactly like at startup. A window opened while side by
-// side still gets its own tab.
+// Tick "split": tab mode -> tiled gathers every window on the focused
+// workspace one by one, so autotiling places each; tiled -> tab mode spreads
+// them out like at startup.
 static void split(int fd) {
+    if (tiled) { tiled = 0; tidy(fd, NULL, 0, 1); return; }
+    tiled = 1;
+    double back = -1;
+    for (;;) {
+        char *tree = ipc_call(fd, 4, "");
+        if (!tree) return;
+        int ws[MAXWS], nws = workspaces(jroot(tree), ws), cur = curws(ws, nws);
+        if (cur < 0) { free(tree); return; }
+        int lv[MAXLEAF], pr[MAXLEAF], n = 0;
+        inorder(ws[cur], -1, lv, pr, &n);
+        for (int k = 0; k < n && back < 0; k++) if (isfocused(lv[k])) back = jnget(lv[k], "id");
+        double next = -1;
+        for (int i = 0; i < nws && next < 0; i++) {
+            if (i == cur) continue;
+            int ov[MAXLEAF], op[MAXLEAF], m = 0;
+            inorder(ws[i], -1, ov, op, &m);
+            if (m) next = jnget(ov[0], "id");
+        }
+        char line[256];
+        cmdlen = 0; cmdbuf[0] = 0;
+        if (next >= 0) {
+            autotile(ws[cur]);
+            snprintf(line, sizeof line, "[con_id=%.0f] move container to workspace number %d; [con_id=%.0f] focus",
+                     next, (int)jnget(ws[cur], "num"), next);
+        } else if (back >= 0) {
+            snprintf(line, sizeof line, "[con_id=%.0f] focus", back);
+        } else line[0] = 0;
+        if (line[0]) cmd_add(line);
+        if (cmdlen) free(ipc_call(fd, 0, cmdbuf));
+        free(tree);
+        if (next < 0) break;
+    }
+    tidy(fd, "focus", 0, 0);
+}
+
+// Tick "next"/"prev" (Alt+Tab, F3): next tab, in tiled mode next window.
+static void cycle(int fd, int dir) {
+    if (!tiled) {
+        free(ipc_call(fd, 0, dir > 0 ? "workspace next_on_output" : "workspace prev_on_output"));
+        return;
+    }
     char *tree = ipc_call(fd, 4, "");
     if (!tree) return;
-    int root = jroot(tree), ws[MAXWS], nws = workspaces(root, ws), cur = -1;
-    for (int i = 0; i < nws; i++) {
-        int f = jget(ws[i], "focused");
-        int lv[MAXLEAF], n = 0;
-        leaves(ws[i], lv, &n);
-        for (int k = 0; k < n && cur < 0; k++) {
-            int lf = jget(lv[k], "focused");
-            if (lf >= 0 && jv[lf].n) cur = i;
-        }
-        if (f >= 0 && jv[f].n) cur = i;
-    }
-    if (cur < 0) { free(tree); return; }
-    int lv[MAXLEAF], n = 0;
-    leaves(ws[cur], lv, &n);
-    if (n > 1) { free(tree); tidy(fd, NULL, 0, 1); return; }
-    char line[256];
-    cmdlen = 0; cmdbuf[0] = 0;
-    for (int i = 0; i < nws; i++) {
-        if (i == cur) continue;
-        int ov[MAXLEAF], m = 0;
-        leaves(ws[i], ov, &m);
-        for (int k = 0; k < m; k++) {
-            snprintf(line, sizeof line, "[con_id=%.0f] move container to workspace number %d",
-                     jnget(ov[k], "id"), (int)jnget(ws[cur], "num"));
-            cmd_add(line);
-        }
-    }
-    if (cmdlen) {
-        snprintf(line, sizeof line, "workspace number %d; layout splith", (int)jnget(ws[cur], "num"));
-        cmd_add(line);
-        free(ipc_call(fd, 0, cmdbuf));
+    int ws[MAXWS], nws = workspaces(jroot(tree), ws), cur = curws(ws, nws);
+    int lv[MAXLEAF], pr[MAXLEAF], n = 0;
+    if (cur >= 0) inorder(ws[cur], -1, lv, pr, &n);
+    for (int k = 0; k < n; k++) {
+        if (!isfocused(lv[k])) continue;
+        char line[64];
+        snprintf(line, sizeof line, "[con_id=%.0f] focus", jnget(lv[(k + dir + n) % n], "id"));
+        free(ipc_call(fd, 0, line));
+        break;
     }
     free(tree);
 }
@@ -903,10 +989,13 @@ int main(int argc, char **argv) {
                         if (ch) snprintf(change, sizeof change, "%s", ch);
                         const char *tick = jsget(r, "payload");
                         int volkey = t == 0x80000007u && tick && !strcmp(tick, "volume");
-                        int splitkey = t == 0x80000007u && tick && !strcmp(tick, "split");
+                        int istick = t == 0x80000007u && tick;
+                        int splitkey = istick && !strcmp(tick, "split");
+                        int cyc = istick && !strcmp(tick, "next") ? 1 : istick && !strcmp(tick, "prev") ? -1 : 0;
                         free(m);
                         if (volkey) vol_refresh();
                         if (splitkey) split(cmd);
+                        if (cyc) cycle(cmd, cyc);
                         if (t == 0x80000003u || (t == 0x80000000u &&
                             (!strcmp(change, "init") || !strcmp(change, "empty"))))
                             tidy(cmd, change, con, 0);

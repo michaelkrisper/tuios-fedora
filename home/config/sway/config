@@ -37,10 +37,12 @@ input "1452:602:bcm5974" {
 }
 
 # Tabs are workspaces (see bar below).
-bindsym Mod1+Tab       workspace next_on_output
-bindsym Mod1+Shift+Tab workspace prev_on_output
-bindsym $mod+Tab       workspace next_on_output
-bindsym $mod+Shift+Tab workspace prev_on_output
+# Tick instead of "workspace next_on_output": in tiled mode (Ctrl+Fn+F3) there
+# is only one workspace, swaybar-status then cycles the windows.
+bindsym Mod1+Tab       exec swaymsg -q -t send_tick next
+bindsym Mod1+Shift+Tab exec swaymsg -q -t send_tick prev
+bindsym $mod+Tab       exec swaymsg -q -t send_tick next
+bindsym $mod+Shift+Tab exec swaymsg -q -t send_tick prev
 bindsym $mod+Left      focus left
 bindsym $mod+Right     focus right
 bindsym $mod+Return    exec $term
@@ -53,7 +55,7 @@ bindsym $mod+f         fullscreen toggle
 bindsym $mod+Shift+c   reload
 bindsym $mod+Shift+e   exec swaymsg exit
 
-# Ctrl+Fn+F3: tabs <-> side by side (swaybar-status handles the tick "split").
+# Ctrl+Fn+F3: tabs <-> tiled (autotiling) (swaybar-status handles the tick "split").
 # Fn makes the key a plain F3, so specialkeysd (KEY_SCALE only) never sees it.
 bindsym Control+F3     exec swaymsg -t send_tick split
 
