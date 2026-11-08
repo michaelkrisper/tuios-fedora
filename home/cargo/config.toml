@@ -1,0 +1,11 @@
+# Faster local dev/test builds (Cargo build-performance guide). Release
+# profiles are untouched. Full debuginfo when needed: --profile debugging
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.debugging]
+inherits = "dev"
+debug = true

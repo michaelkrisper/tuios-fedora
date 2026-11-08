@@ -18,6 +18,7 @@ tests/                their unit tests (make test)
 home/                 user files; home/config/x  ->  ~/.config/x
 home/bash_profile     ->  ~/.bash_profile      (loads the kiosk starter)
 home/local/bin/       ->  ~/.local/bin
+home/cargo/           ->  ~/.cargo
 system/               root-owned files, mirroring / — copy with sudo
 ```
 
@@ -311,6 +312,25 @@ sudo install -Dm644 system/etc/systemd/logind.conf.d/91-lid-hibernate.conf \
      /etc/systemd/logind.conf.d/91-lid-hibernate.conf
 sudo systemctl reload systemd-logind
 ```
+
+### Rust dev builds (optional, measured)
+
+On four cores, debug info is a large share of a Rust test build.
+`home/cargo/config.toml` keeps line tables for workspace crates (panic
+backtraces still show file and line), drops debug info for dependencies and
+adds `--profile debugging` for full debug info. Release profiles are not
+touched. On a large workspace (one edited file, `cargo test --no-run`): 13.4 s
+to 9.7 s, linking 2.7 s to 1.0 s, test binary 437 MB to 164 MB. The first
+build after the change rebuilds everything once.
+
+```sh
+install -Dm644 home/cargo/config.toml ~/.cargo/config.toml
+```
+
+Ruled out: mold (since Rust 1.90, x86_64 Linux already links with
+`rust-lld`; linking is about 1 s), sccache (does not cache incremental
+workspace crates). Cranelift, `-Zthreads` and `resolver.feature-unification`
+need nightly.
 
 ## 7. Services that are switched off
 
