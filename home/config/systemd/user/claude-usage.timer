@@ -1,0 +1,9 @@
+[Unit]
+Description=Poll the weekly Claude limit every 5 minutes
+
+[Timer]
+OnStartupSec=10s
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

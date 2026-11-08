@@ -57,9 +57,12 @@ workspace is renamed "N:<window title>" (the bar strips the number), and
 closing the last window of the visible workspace jumps to the previous tab.
 The window title is the working directory (bash `PROMPT_COMMAND`). The Claude
 weekly limit appears only while `$XDG_RUNTIME_DIR/claude-bar/limits` exists;
-inotify on that directory redraws immediately. Nothing writes that file by
-default: `statusline --bar` from claude-statusline does when set as Claude Code's
-statusLine command, and it also keeps the window title current inside Claude Code.
+inotify on that directory redraws immediately. `claude-usage.timer` (user unit,
+every 5 min) writes it: `home/local/bin/claude-usage` asks the account-wide usage
+endpoint with Claude Code's OAuth token and renders the result through
+`statusline --bar` from claude-statusline (gauge, percent, `→ ~N%` projection to
+the weekly reset from the second day on). Enable with
+`systemctl --user enable --now claude-usage.timer`.
 
 * **CPU** — busy percentage over the last interval, from `/proc/stat`. Turns
   red at 70 %.

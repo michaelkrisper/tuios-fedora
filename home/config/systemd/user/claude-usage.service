@@ -1,0 +1,6 @@
+[Unit]
+Description=Weekly Claude limit for the swaybar
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/claude-usage

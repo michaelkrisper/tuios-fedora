@@ -1,0 +1,17 @@
+#!/bin/bash
+# Weekly Claude limit for the swaybar, run every 5 min by claude-usage.timer.
+# Asks the account-wide usage endpoint (so usage on other machines counts too)
+# and hands the numbers to `statusline --bar` from claude-statusline, which
+# writes $XDG_RUNTIME_DIR/claude-bar/limits incl. the end-of-week projection.
+# The token is the one Claude Code keeps fresh; it is never refreshed here,
+# because refresh tokens rotate and that would log Claude Code out. Expired
+# token -> no update, the bar keeps the last value.
+set -eo pipefail
+tok=$(jq -r .claudeAiOauth.accessToken ~/.claude/.credentials.json)
+printf 'Authorization: Bearer %s\n' "$tok" |
+    curl -sSf -m 20 -H @- -H 'anthropic-beta: oauth-2025-04-20' \
+        https://api.anthropic.com/api/oauth/usage |
+    jq -ce '.seven_day | select(.utilization != null) | {rate_limits: {seven_day: {
+        used_percentage: .utilization,
+        resets_at: (.resets_at | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601)}}}' |
+    ~/.claude/claude-statusline/statusline --bar
