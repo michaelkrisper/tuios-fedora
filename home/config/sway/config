@@ -12,7 +12,9 @@ set $browser ~/.local/bin/google-chrome-stable --ozone-platform-hint=auto
 
 # Windows are stacked as tabs instead of side by side: each one is full size.
 workspace_layout tabbed
-default_border none
+# 2 px frame around every window. Only visible in tiled mode (Ctrl+Fn+F3):
+# hide_edge_borders smart drops it while a workspace holds a single window.
+default_border pixel 2
 # --i3 hides the tab title bar while there is only one window in the tabbed
 # container -- a single foot looks exactly like it did under cage.
 hide_edge_borders --i3 smart
@@ -78,10 +80,10 @@ bindsym --locked XF86AudioLowerVolume exec wpctl set-volume $sink 10%- && $volti
 bindsym --locked XF86AudioRaiseVolume exec wpctl set-volume -l 1.0 $sink 10%+ && $voltick
 
 # Tabs in the Catppuccin look of the former tmux bar.
-#                       border  backgr.   text    indicator
-client.focused          #89b4fa #89b4fa   #1e1e2e #89b4fa
-client.focused_inactive #181825 #181825   #cdd6f4 #181825
-client.unfocused        #181825 #181825   #a6adc8 #181825
+#                       border  backgr.   text    indicator child_border
+client.focused          #89b4fa #89b4fa   #1e1e2e #89b4fa   #89b4fa
+client.focused_inactive #181825 #181825   #cdd6f4 #45475a   #45475a
+client.unfocused        #181825 #181825   #a6adc8 #45475a   #45475a
 
 # One bar, as with tmux before: tabs on the left; CPU, network, battery, clock
 # on the right. The tabs are workspace buttons -- swaybar-status puts every
