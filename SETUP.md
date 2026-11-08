@@ -171,10 +171,15 @@ make && make install                    # swaybar-status -> ~/.local/bin, swayms
 ```
 
 swaybar runs `swaybar-status --loop 5` (Pango output, see README).
-`CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` is set in `~/.claude/settings.json` env, so
-the title stays what bash set (`<path>: claude`). No statusLine command is set, so
-the bar shows no Claude weekly limit; to get it back, set `statusline --bar` from
-claude-statusline as the statusLine command.
+Tab titles inside Claude Code come from Claude Code itself (session topic, with a
+status glyph while it works); `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` must not be set.
+No statusLine command is set; the weekly limit comes from `claude-usage.timer`:
+
+```sh
+cp home/config/systemd/user/claude-usage.* ~/.config/systemd/user/
+install -m755 home/local/bin/claude-usage ~/.local/bin/
+systemctl --user enable --now claude-usage.timer
+```
 
 | | |
 |---|---|
