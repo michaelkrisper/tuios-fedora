@@ -807,6 +807,48 @@ static void tidy(int fd, const char *change, double con, int start) {
     free(tree);
 }
 
+// Tick "split" (Ctrl+Fn+F3): toggles between tabs and side by side. Side by
+// side gathers every window on the focused workspace (splith), back to tabs
+// spreads them out again exactly like at startup. A window opened while side by
+// side still gets its own tab.
+static void split(int fd) {
+    char *tree = ipc_call(fd, 4, "");
+    if (!tree) return;
+    int root = jroot(tree), ws[MAXWS], nws = workspaces(root, ws), cur = -1;
+    for (int i = 0; i < nws; i++) {
+        int f = jget(ws[i], "focused");
+        int lv[MAXLEAF], n = 0;
+        leaves(ws[i], lv, &n);
+        for (int k = 0; k < n && cur < 0; k++) {
+            int lf = jget(lv[k], "focused");
+            if (lf >= 0 && jv[lf].n) cur = i;
+        }
+        if (f >= 0 && jv[f].n) cur = i;
+    }
+    if (cur < 0) { free(tree); return; }
+    int lv[MAXLEAF], n = 0;
+    leaves(ws[cur], lv, &n);
+    if (n > 1) { free(tree); tidy(fd, NULL, 0, 1); return; }
+    char line[256];
+    cmdlen = 0; cmdbuf[0] = 0;
+    for (int i = 0; i < nws; i++) {
+        if (i == cur) continue;
+        int ov[MAXLEAF], m = 0;
+        leaves(ws[i], ov, &m);
+        for (int k = 0; k < m; k++) {
+            snprintf(line, sizeof line, "[con_id=%.0f] move container to workspace number %d",
+                     jnget(ov[k], "id"), (int)jnget(ws[cur], "num"));
+            cmd_add(line);
+        }
+    }
+    if (cmdlen) {
+        snprintf(line, sizeof line, "workspace number %d; layout splith", (int)jnget(ws[cur], "num"));
+        cmd_add(line);
+        free(ipc_call(fd, 0, cmdbuf));
+    }
+    free(tree);
+}
+
 int main(int argc, char **argv) {
     unsigned long busy, idle, pbusy, pidle, rx, tx, prx, ptx;
 
@@ -861,8 +903,10 @@ int main(int argc, char **argv) {
                         if (ch) snprintf(change, sizeof change, "%s", ch);
                         const char *tick = jsget(r, "payload");
                         int volkey = t == 0x80000007u && tick && !strcmp(tick, "volume");
+                        int splitkey = t == 0x80000007u && tick && !strcmp(tick, "split");
                         free(m);
                         if (volkey) vol_refresh();
+                        if (splitkey) split(cmd);
                         if (t == 0x80000003u || (t == 0x80000000u &&
                             (!strcmp(change, "init") || !strcmp(change, "empty"))))
                             tidy(cmd, change, con, 0);

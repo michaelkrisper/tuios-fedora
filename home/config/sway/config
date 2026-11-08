@@ -53,6 +53,10 @@ bindsym $mod+f         fullscreen toggle
 bindsym $mod+Shift+c   reload
 bindsym $mod+Shift+e   exec swaymsg exit
 
+# Ctrl+Fn+F3: tabs <-> side by side (swaybar-status handles the tick "split").
+# Fn makes the key a plain F3, so specialkeysd (KEY_SCALE only) never sees it.
+bindsym Control+F3     exec swaymsg -t send_tick split
+
 # KEY_SCALE/KEY_DASHBOARD (F3 next, F4 new terminal) are deliberately NOT bound
 # here: specialkeysd reads /dev/input directly and sends swaymsg. Two layers on
 # the same key mean two actions per press.
