@@ -22,14 +22,11 @@ home/cargo/           ->  ~/.cargo
 system/               root-owned files, mirroring / — copy with sudo
 ```
 
-The live machine symlinks the three files that change often back into this
-repo, so there are no drifting copies:
-
-```sh
-ln -sf ~/tuios-fedora/home/config/sway/config    ~/.config/sway/config
-ln -sf ~/tuios-fedora/src/swaybar-status.c       ~/.local/src/swaybar-status.c
-ln -sf ~/tuios-fedora/src/specialkeysd.c         ~/.local/src/specialkeysd.c
-```
+The live machine runs copies of the files under `home/` and `system/`
+(installed with the `cp` commands below), not symlinks into this repo. The two
+programs are built from `src/` and installed with `make install` and
+`make install-daemon`. A config change made here therefore has to be applied
+at the live path too, and vice versa.
 
 ---
 
